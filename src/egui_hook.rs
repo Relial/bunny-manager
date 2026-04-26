@@ -1,0 +1,148 @@
+use std::{
+    ffi::c_void,
+    mem::transmute,
+    sync::{
+        Once,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
+use anyhow::{Result, anyhow};
+use egui_d3d9::EguiDx9;
+use retour::static_detour;
+use windows::{
+    Win32::{
+        Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Graphics::{
+            Direct3D9::{
+                D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_SOFTWARE_VERTEXPROCESSING,
+                D3DDEVTYPE_NULLREF, D3DDISPLAYMODE, D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD,
+                Direct3DCreate9Ex, IDirect3DDevice9,
+            },
+            Gdi::RGNDATA,
+        },
+        UI::WindowsAndMessaging::{CallWindowProcW, GWLP_WNDPROC, SetWindowLongPtrA, WNDPROC},
+    },
+    core::HRESULT,
+};
+
+use crate::ui::main_window::{MainWindow, ui};
+
+static mut APP: Option<EguiDx9<MainWindow>> = None;
+pub static GAME_HWND: AtomicUsize = AtomicUsize::new(0);
+static mut O_WND_PROC: Option<WNDPROC> = None;
+
+type FnPresent = unsafe extern "system" fn(
+    IDirect3DDevice9,
+    *const RECT,
+    *const RECT,
+    HWND,
+    *const RGNDATA,
+) -> HRESULT;
+type FnReset = unsafe extern "system" fn(IDirect3DDevice9, *const D3DPRESENT_PARAMETERS) -> HRESULT;
+static_detour! {
+    static PresentHook: unsafe extern "system" fn(IDirect3DDevice9, *const RECT, *const RECT, HWND, *const RGNDATA) -> HRESULT;
+    static ResetHook: unsafe extern "system" fn(IDirect3DDevice9, *const D3DPRESENT_PARAMETERS) -> HRESULT;
+}
+
+#[allow(static_mut_refs)]
+fn hk_present(
+    device: IDirect3DDevice9,
+    source_rect: *const RECT,
+    dest_rect: *const RECT,
+    hwnd: HWND,
+    dirty_region: *const RGNDATA,
+) -> HRESULT {
+    unsafe {
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            let hwnd = HWND(GAME_HWND.load(Ordering::Relaxed) as *mut c_void);
+            APP = Some(EguiDx9::init(
+                &device,
+                hwnd,
+                ui,
+                MainWindow::default(),
+                false,
+            ));
+            O_WND_PROC = Some(transmute(SetWindowLongPtrA(
+                hwnd,
+                GWLP_WNDPROC,
+                hk_wnd_proc as *const () as _,
+            )));
+        });
+        let app = APP.as_mut().unwrap();
+        app.state_mut().stats.frame_start();
+        app.present(&device);
+        app.state_mut().stats.ui_end();
+
+        let ret = PresentHook.call(device, source_rect, dest_rect, hwnd, dirty_region);
+        app.state_mut().stats.frame_end();
+        ret
+    }
+}
+
+#[allow(static_mut_refs)]
+fn hk_reset(
+    device: IDirect3DDevice9,
+    presentation_parameters: *const D3DPRESENT_PARAMETERS,
+) -> HRESULT {
+    unsafe {
+        if let Some(app) = &mut APP {
+            app.pre_reset();
+        }
+        ResetHook.call(device, presentation_parameters)
+    }
+}
+
+#[allow(static_mut_refs)]
+fn hk_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    unsafe {
+        APP.as_mut().unwrap().wnd_proc(msg, wparam, lparam);
+        CallWindowProcW(O_WND_PROC.unwrap(), hwnd, msg, wparam, lparam)
+    }
+}
+
+pub fn hook(hwnd: HWND) -> Result<()> {
+    // Mostly taken from https://github.com/ohchase/shroud
+    let direct3d_9 = unsafe { Direct3DCreate9Ex(D3D_SDK_VERSION) }?;
+    let mut d3d_display_mode = D3DDISPLAYMODE::default();
+    unsafe { direct3d_9.GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &mut d3d_display_mode) }?;
+
+    let mut presentation_parameters = D3DPRESENT_PARAMETERS {
+        BackBufferFormat: d3d_display_mode.Format,
+        SwapEffect: D3DSWAPEFFECT_DISCARD,
+        Windowed: true.into(),
+        ..Default::default()
+    };
+    let mut device = None;
+    unsafe {
+        direct3d_9.CreateDevice(
+            D3DADAPTER_DEFAULT,
+            D3DDEVTYPE_NULLREF,
+            hwnd,
+            D3DCREATE_SOFTWARE_VERTEXPROCESSING as u32,
+            &mut presentation_parameters,
+            &mut device,
+        )?;
+    }
+    let device = device.ok_or(anyhow!("Failed to create DirectX device"))?;
+    let vtable = unsafe {
+        std::slice::from_raw_parts(
+            transmute::<IDirect3DDevice9, *const *const *const usize>(device).read(),
+            119,
+        )
+    };
+    let reset = vtable[16];
+    let present = vtable[17];
+    unsafe {
+        let present: FnPresent = transmute(present);
+        let reset: FnReset = transmute(reset);
+
+        PresentHook.initialize(present, hk_present)?;
+        ResetHook.initialize(reset, hk_reset)?;
+
+        PresentHook.enable()?;
+        ResetHook.enable()?;
+    }
+    Ok(())
+}
