@@ -93,7 +93,7 @@ impl UiManager {
                     error!("Config save error: {e}");
                 }
             });
-            for plugin in plugin_manager.plugins() {
+            for plugin in &plugin_manager.plugins {
                 plugin.save();
             }
         }
@@ -113,7 +113,7 @@ impl UiManager {
             warn!("Something went wrong converting egui style");
             return;
         };
-        for plugin in plugin_manager.plugins_mut() {
+        for plugin in &mut plugin_manager.plugins {
             plugin.free_ui(
                 ui,
                 &style,

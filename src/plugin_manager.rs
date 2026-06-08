@@ -2,7 +2,7 @@ use std::{
     env::current_exe,
     ffi::{OsStr, c_void},
     mem::transmute,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
     thread::JoinHandle,
 };
@@ -12,7 +12,9 @@ use abi_stable::{
     std_types::{RArc, RHashMap, RString},
 };
 use anyhow::{Result, anyhow};
-use bunny_ui::{input_state::Input, paint::paintlist::PaintList, response::Response, style::Style, ui::BunnyUi};
+use bunny_ui::{
+    input_state::Input, paint::paintlist::PaintList, response::Response, style::Style, ui::BunnyUi,
+};
 use egui::{Id, Rect, Ui};
 use rapidhash::fast::RandomState;
 use tracing::{error, info, warn};
@@ -34,9 +36,9 @@ pub static PLUGIN_MANAGER: OnceLock<Mutex<PluginManager>> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct PluginManager<'a> {
-    plugins: Vec<BunnyPlugin<'a>>,
+    pub plugins: Vec<BunnyPlugin<'a>>,
     global_style: Option<Style>,
-    dirs: PluginDirs,
+    pub dirs: PluginDirs,
     pub addresses: Addresses,
 }
 
@@ -45,7 +47,7 @@ impl<'a> PluginManager<'a> {
         let dirs = PluginDirs::new()?;
         let mut plugins = find_plugins(&dirs)?;
         for plugin in &mut plugins {
-            plugin.load(addresses.dll_info);
+            plugin.load(&dirs.configs, addresses.dll_info);
         }
         Ok(Self {
             plugins,
@@ -61,21 +63,13 @@ impl<'a> PluginManager<'a> {
         self.global_style.as_ref()
     }
 
-    pub fn plugins(&self) -> &[BunnyPlugin<'a>] {
-        &self.plugins
-    }
-
-    pub fn plugins_mut(&mut self) -> &mut [BunnyPlugin<'a>] {
-        &mut self.plugins
-    }
-
     pub fn refresh(&mut self) {
         if let Ok(new_plugins) = find_plugins(&self.dirs) {
             self.plugins
                 .retain(|existing_plugin| new_plugins.contains(existing_plugin));
             for mut plugin in new_plugins {
                 if !self.plugins.contains(&plugin) {
-                    plugin.load(self.addresses.dll_info);
+                    plugin.load(&self.dirs.configs, self.addresses.dll_info);
                     self.plugins.push(plugin);
                 }
             }
@@ -137,14 +131,13 @@ pub struct BunnyPlugin<'a> {
     funcs: Option<PluginFuncs>,
     handle: Option<usize>,
     plugin_path: PathBuf,
-    config_path: PathBuf,
     paint_list: RArc<RRwLock<PaintList<'a>>>,
     menu_responses: Option<RArc<RHashMap<Id, Response, RandomState>>>,
     free_responses: Option<RArc<RHashMap<Id, Response, RandomState>>>,
 }
 
 impl BunnyPlugin<'_> {
-    fn new(name: String, plugin_path: PathBuf, config_path: PathBuf) -> Self {
+    fn new(name: String, plugin_path: PathBuf) -> Self {
         Self {
             name,
             loaded: false,
@@ -152,14 +145,13 @@ impl BunnyPlugin<'_> {
             funcs: None,
             handle: None,
             plugin_path,
-            config_path,
             paint_list: RArc::new(RRwLock::new(PaintList::new())),
             menu_responses: None,
             free_responses: None,
         }
     }
 
-    pub fn load(&mut self, main_dll_info: MainDllInfo) {
+    pub fn load(&mut self, config_dir_path: impl AsRef<Path>, main_dll_info: MainDllInfo) {
         match unsafe { LoadLibraryW(&HSTRING::from(self.plugin_path.as_path())) } {
             Ok(module) => {
                 self.handle = Some(module.0 as usize);
@@ -169,8 +161,12 @@ impl BunnyPlugin<'_> {
                     Ok(funcs) => match get_plugin_api_version(module) {
                         Ok(plugin_api_ver) => {
                             if plugin_api_ver == bunny_ui::BUNNY_API_VERSION {
-                                let config_path = self.config_path.to_string_lossy().into();
-                                if unsafe { (funcs.init)(config_path, main_dll_info) } {
+                                if unsafe {
+                                    (funcs.init)(
+                                        config_dir_path.as_ref().to_string_lossy().into(),
+                                        main_dll_info,
+                                    )
+                                } {
                                     self.funcs = Some(funcs);
                                 } else {
                                     warn!("{} failed to initialize", self.name);
@@ -383,8 +379,7 @@ fn find_plugins<'a>(plugin_dirs: &PluginDirs) -> Result<Vec<BunnyPlugin<'a>>> {
                         .unwrap_or(OsStr::new("?"))
                         .to_string_lossy()
                         .to_string();
-                    let config_path = plugin_dirs.configs.join(&file_name);
-                    plugins.push(BunnyPlugin::new(file_name, absolute_path, config_path));
+                    plugins.push(BunnyPlugin::new(file_name, absolute_path));
                 }
                 Err(e) => error!(
                     "Failed to convert path at {} to absolute: {e}",
@@ -399,7 +394,7 @@ fn find_plugins<'a>(plugin_dirs: &PluginDirs) -> Result<Vec<BunnyPlugin<'a>>> {
 fn get_plugin_api_version(module: HMODULE) -> Result<u32> {
     unsafe {
         let raw_ver = GetProcAddress(module, s!("BUNNY_API_VERSION"))
-            .ok_or(anyhow!("plugin bunny API version not found"))?;
+            .ok_or(anyhow!("Plugin bunny API version not found"))?;
         Ok((raw_ver as *const u32).read())
     }
 }
@@ -412,7 +407,6 @@ impl std::fmt::Debug for BunnyPlugin<'_> {
             .field("stats", &self.stats)
             .field("handle", &self.handle)
             .field("plugin_path", &self.plugin_path)
-            .field("config_path", &self.config_path)
             .finish_non_exhaustive()
     }
 }

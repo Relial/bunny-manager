@@ -154,16 +154,16 @@ impl MainWindow {
                 return;
             };
 
-            for plugin in plugin_manager.plugins_mut() {
+            for plugin in &mut plugin_manager.plugins {
                 ui.horizontal(|ui| {
-                    let mut fake = plugin.loaded;
+                    let mut temp = plugin.loaded;
                     ui.scope(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        if ui.add(Checkbox::without_text(&mut fake)).clicked() {
+                        if ui.add(Checkbox::without_text(&mut temp)).clicked() {
                             if plugin.loaded {
                                 plugin.unload();
                             } else {
-                                plugin.load(dll_info);
+                                plugin.load(&plugin_manager.dirs.configs, dll_info);
                             }
                         }
                     });
@@ -194,7 +194,7 @@ impl MainWindow {
             });
 
             ui.collapsing("Plugin stats", |ui| {
-                for plugin in plugin_manager.plugins_mut() {
+                for plugin in &mut plugin_manager.plugins {
                     plugin.stats.update();
                     ui.strong(&plugin.name);
                     ui.indent(&plugin.name, |ui| {

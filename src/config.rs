@@ -25,7 +25,7 @@ impl Default for Config {
             open_on_startup: true,
             toggle_manager_shortcut: KeyboardShortcut::new(Modifiers::CTRL, Key::Num0),
             collect_stats: false,
-            config_autosave_interval_seconds: 300,
+            config_autosave_interval_seconds: 60,
         }
     }
 }

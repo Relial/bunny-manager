@@ -16,7 +16,7 @@ fn hook_game_shutdown<'a>(addresses: Addresses) -> Result<ClosureHookPoint<'a>> 
     let on_call = |_| {
         if let Some(mut manager) = PLUGIN_MANAGER.get().map(|mutex| mutex.lock().unwrap()) {
             info!("Saving configs");
-            let mut handles: Vec<_> = manager.plugins().iter().flat_map(|p| p.save()).collect();
+            let mut handles: Vec<_> = manager.plugins.iter().flat_map(|p| p.save()).collect();
             if let Some(app) = unsafe { APP.get() } {
                 let state = app.state();
                 let config_path = state.config_path.clone();
@@ -40,7 +40,7 @@ fn hook_game_shutdown<'a>(addresses: Addresses) -> Result<ClosureHookPoint<'a>> 
             }
 
             info!("Running plugin unload funcs");
-            for plugin in manager.plugins_mut() {
+            for plugin in &mut manager.plugins {
                 plugin.unload();
             }
         }
