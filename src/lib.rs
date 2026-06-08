@@ -1,6 +1,13 @@
-use std::{ffi::c_void, sync::atomic::Ordering, thread::sleep, time::Duration};
+#![feature(once_cell_get_mut)]
 
-use anyhow::Result;
+use std::{
+    ffi::c_void,
+    sync::{Mutex, atomic::Ordering},
+    thread::sleep,
+    time::Duration,
+};
+
+use anyhow::{Result, bail};
 use mimalloc::MiMalloc;
 use tracing::{error, info};
 use windows::Win32::{
@@ -13,18 +20,22 @@ use windows::Win32::{
 };
 
 use crate::{
-    address::find_main_dll,
+    address::find_addresses,
     egui_hook::GAME_HWND,
-    plugins::{PluginDirs, initialize_plugins, load_plugins},
+    plugin_manager::{PLUGIN_MANAGER, PluginManager},
 };
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+pub const PLUGINS_PATH: &str = "plugins/bunny_plugins/";
+pub const CONFIG_PATH: &str = "plugins/bunny_config/";
+
 mod address;
+mod config;
 mod egui_hook;
-mod hook;
-mod plugins;
+mod hooks;
+mod plugin_manager;
 mod ui;
 
 fn fallible() -> Result<()> {
@@ -32,34 +43,34 @@ fn fallible() -> Result<()> {
         .without_time()
         .with_ansi(false)
         .init();
-    let addresses = find_main_dll();
+    let addresses = find_addresses();
     info!(
         "Running {}, found main dll at {:#x}",
-        addresses.game_mode, addresses.dll
+        addresses.dll_info.game_mode, addresses.dll_info.address
     );
     unsafe {
         while (addresses.game_state as *const u8).read() == 0 {
             sleep(Duration::from_millis(100));
         }
     }
+
+    info!("Loading plugins");
+    let manager = PluginManager::new(addresses)?;
+    info!("Plugin loading done");
+    if PLUGIN_MANAGER.set(Mutex::new(manager)).is_err() {
+        bail!("Plugin manager already initialized before startup");
+    }
+
     let hwnd_value = unsafe { (addresses.hwnd as *const usize).read() };
     GAME_HWND.store(hwnd_value, Ordering::Relaxed);
     let hwnd = HWND(hwnd_value as *mut c_void);
-    info!("Initializing D3D9 hooks");
+    info!("Hooking D3D9");
     egui_hook::hook(hwnd)?;
-    info!("D3D9 hooks enabled successfully");
+    info!("D3D9 hooks done");
 
     info!("Hooking game functions");
-    let _hooks = hook::init(&addresses)?;
-    info!("Finished hooking");
-
-    info!("Loading plugins");
-    let plugin_dirs = PluginDirs::new()?;
-    load_plugins(&plugin_dirs.plugins)?;
-    info!("Finished loading");
-    info!("Initializing plugins");
-    initialize_plugins(&plugin_dirs.configs, addresses.dll, addresses.game_mode);
-    info!("Finished initialization");
+    let _hooks = hooks::init(&addresses)?;
+    info!("Game hooks done");
 
     const KEEPALIVE: Duration = Duration::from_secs(1);
     loop {

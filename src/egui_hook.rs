@@ -1,10 +1,8 @@
 use std::{
+    cell::OnceCell,
     ffi::c_void,
     mem::transmute,
-    sync::{
-        Once,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use anyhow::{Result, anyhow};
@@ -26,9 +24,9 @@ use windows::{
     core::HRESULT,
 };
 
-use crate::ui::main_window::{MainWindow, ui};
+use crate::ui::ui_manager::{INIT, UiManager, ui};
 
-static mut APP: Option<EguiDx9<MainWindow>> = None;
+pub static mut APP: OnceCell<EguiDx9<UiManager>> = OnceCell::new();
 pub static GAME_HWND: AtomicUsize = AtomicUsize::new(0);
 static mut O_WND_PROC: Option<WNDPROC> = None;
 
@@ -54,29 +52,30 @@ fn hk_present(
     dirty_region: *const RGNDATA,
 ) -> HRESULT {
     unsafe {
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
+        let app = APP.get_mut_or_init(|| {
             let hwnd = HWND(GAME_HWND.load(Ordering::Relaxed) as *mut c_void);
-            APP = Some(EguiDx9::init(
-                &device,
-                hwnd,
-                ui,
-                MainWindow::default(),
-                false,
-            ));
-            O_WND_PROC = Some(transmute(SetWindowLongPtrA(
+            let egui = EguiDx9::init(&device, hwnd, ui, UiManager::new(), false);
+            let o_wnd_proc: WNDPROC = transmute(SetWindowLongPtrA(
                 hwnd,
                 GWLP_WNDPROC,
                 hk_wnd_proc as *const () as _,
-            )));
+            ));
+            O_WND_PROC = Some(o_wnd_proc);
+            egui
         });
-        let app = APP.as_mut().unwrap();
-        app.state_mut().stats.frame_start();
+        let collect_stats = app.state().collect_stats();
+        if collect_stats {
+            app.state_mut().stats.frame_start();
+        }
         app.present(&device);
-        app.state_mut().stats.ui_end();
+        if collect_stats {
+            app.state_mut().stats.ui_end();
+        }
 
         let ret = PresentHook.call(device, source_rect, dest_rect, hwnd, dirty_region);
-        app.state_mut().stats.frame_end();
+        if collect_stats {
+            app.state_mut().stats.frame_end();
+        }
         ret
     }
 }
@@ -87,9 +86,9 @@ fn hk_reset(
     presentation_parameters: *const D3DPRESENT_PARAMETERS,
 ) -> HRESULT {
     unsafe {
-        if let Some(app) = &mut APP {
-            app.pre_reset();
-        }
+        let app = APP.get_mut().unwrap();
+        app.pre_reset();
+        INIT.store(false, Ordering::Relaxed);
         ResetHook.call(device, presentation_parameters)
     }
 }
@@ -97,7 +96,7 @@ fn hk_reset(
 #[allow(static_mut_refs)]
 fn hk_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
-        APP.as_mut().unwrap().wnd_proc(msg, wparam, lparam);
+        APP.get_mut().unwrap().wnd_proc(msg, wparam, lparam);
         CallWindowProcW(O_WND_PROC.unwrap(), hwnd, msg, wparam, lparam)
     }
 }
