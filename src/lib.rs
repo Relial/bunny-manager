@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use mimalloc::MiMalloc;
-use tracing::{error, info};
+use tracing::{error, info, level_filters::LevelFilter};
 use windows::Win32::{
     Foundation::{CloseHandle, HINSTANCE, HMODULE, HWND},
     System::{

@@ -9,11 +9,11 @@ use std::{
 
 use abi_stable::{
     external_types::RRwLock,
-    std_types::{RArc, RHashMap, RString},
+    std_types::{RArc, RHashMap, RStr},
 };
 use anyhow::{Result, anyhow};
 use bunny_ui::{
-    input_state::Input, paint::paintlist::PaintList, response::Response, style::Style, ui::BunnyUi,
+    input_state::{Input, PointerState}, paint::paintlist::PaintList, response::Response, style::Style, ui::BunnyUi,
 };
 use egui::{Id, Rect, Ui};
 use rapidhash::fast::RandomState;
@@ -77,7 +77,7 @@ impl<'a> PluginManager<'a> {
     }
 }
 
-type FnPluginInit = unsafe extern "C" fn(RString, MainDllInfo) -> bool;
+type FnPluginInit = unsafe extern "C" fn(RStr, MainDllInfo) -> bool;
 type FnPluginMenu = unsafe extern "C" fn(&mut BunnyUi);
 type FnPluginUi = unsafe extern "C" fn(&mut BunnyUi);
 type FnPluginUnload = unsafe extern "C" fn();
@@ -163,7 +163,7 @@ impl BunnyPlugin<'_> {
                             if plugin_api_ver == bunny_ui::BUNNY_API_VERSION {
                                 if unsafe {
                                     (funcs.init)(
-                                        config_dir_path.as_ref().to_string_lossy().into(),
+                                        config_dir_path.as_ref().to_string_lossy().as_ref().into(),
                                         main_dll_info,
                                     )
                                 } {
@@ -197,6 +197,7 @@ impl BunnyPlugin<'_> {
         ui: &mut Ui,
         style: &Style,
         input: Input,
+        response_pointerstate: RArc<PointerState>,
         available_space: Rect,
         collect_stats: bool,
     ) {
@@ -221,7 +222,7 @@ impl BunnyPlugin<'_> {
 
             let mut new =
                 RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
-            bunny_ui.ui(ui, &mut new, input);
+            bunny_ui.ui(ui, &mut new, response_pointerstate);
             self.menu_responses = Some(RArc::new(new));
 
             if collect_stats {
@@ -240,6 +241,7 @@ impl BunnyPlugin<'_> {
         ui: &mut Ui,
         style: &Style,
         input: Input,
+        response_pointerstate: RArc<PointerState>,
         available_space: Rect,
         collect_stats: bool,
     ) {
@@ -264,7 +266,7 @@ impl BunnyPlugin<'_> {
 
             let mut new =
                 RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
-            bunny_ui.ui(ui, &mut new, input);
+            bunny_ui.ui(ui, &mut new, response_pointerstate);
             self.free_responses = Some(RArc::new(new));
 
             if collect_stats {

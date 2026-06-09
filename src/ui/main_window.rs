@@ -1,4 +1,5 @@
-use bunny_ui::input_state::Input;
+use abi_stable::std_types::RArc;
+use bunny_ui::input_state::{Input, PointerState};
 use egui::{
     Align2, Checkbox, CollapsingHeader, Color32, CornerRadius, FontId, Frame, Id, Sense, Shadow,
     TextWrapMode, Ui, scroll_area::ScrollSource, vec2,
@@ -29,6 +30,7 @@ impl MainWindow {
         stats: &mut Stats,
         manager: &mut PluginManager,
         input: Input,
+        response_pointerstate: RArc<PointerState>,
         config: &mut Config,
     ) {
         let frame = Frame::new()
@@ -60,7 +62,7 @@ impl MainWindow {
                     .scroll_source(ScrollSource::MOUSE_WHEEL | ScrollSource::SCROLL_BAR)
                     .show(ui, |ui| {
                         ui.take_available_space();
-                        self.window_content(ui, manager, stats, input, config);
+                        self.window_content(ui, manager, stats, input, response_pointerstate, config);
                     });
             });
     }
@@ -111,6 +113,7 @@ impl MainWindow {
         plugin_manager: &mut PluginManager,
         stats: &mut Stats,
         input: Input,
+        response_pointerstate: RArc<PointerState>,
         config: &mut Config,
     ) {
         ui.collapsing("Settings", |ui| {
@@ -173,6 +176,7 @@ impl MainWindow {
                                 ui,
                                 &style,
                                 input.clone(),
+                                response_pointerstate.clone(),
                                 ui.max_rect(),
                                 config.collect_stats,
                             );

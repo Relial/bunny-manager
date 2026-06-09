@@ -4,7 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bunny_ui::input_state::Input;
+use abi_stable::std_types::RArc;
+use bunny_ui::input_state::{Input, PointerState};
 use egui::{
     Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2, emath::GuiRounding as _, include_image,
     load::TexturePoll, paint_texture_at,
@@ -25,6 +26,7 @@ pub struct UiManager {
     main_window: MainWindow,
     paint_cursor: bool,
     input: Input,
+    response_pointerstate: RArc<PointerState>,
     pub config: Config,
     pub config_path: Option<PathBuf>,
     last_autosave: Instant,
@@ -57,10 +59,11 @@ impl UiManager {
         };
 
         Self {
-            stats: Stats::default(),
+            stats: Default::default(),
             main_window: MainWindow::new(&config),
             paint_cursor: false,
-            input: Input::default(),
+            input: Default::default(),
+            response_pointerstate: Default::default(),
             config,
             config_path: config_path.ok(),
             last_autosave: Instant::now(),
@@ -68,10 +71,7 @@ impl UiManager {
     }
 
     fn ui(&mut self, ui: &mut Ui) {
-        let input_options = ui.options(|o| o.input_options);
-        ui.input(|i| {
-            self.input.collect(i, input_options.into());
-        });
+        self.update_input(ui);
 
         let mut plugin_manager = PLUGIN_MANAGER
             .get()
@@ -96,6 +96,7 @@ impl UiManager {
             for plugin in &plugin_manager.plugins {
                 plugin.save();
             }
+            self.last_autosave = Instant::now();
         }
 
         if self.main_window.display {
@@ -105,23 +106,25 @@ impl UiManager {
                 &mut self.stats,
                 &mut plugin_manager,
                 self.input.clone(),
+                self.response_pointerstate.clone(),
                 &mut self.config,
             );
         }
 
-        let Some(style) = plugin_manager.style(ui).cloned() else {
+        if let Some(style) = plugin_manager.style(ui).cloned() {
+            for plugin in &mut plugin_manager.plugins {
+                plugin.free_ui(
+                    ui,
+                    &style,
+                    self.input.clone(),
+                    self.response_pointerstate.clone(),
+                    ui.max_rect(),
+                    self.config.collect_stats,
+                );
+                plugin.process_paint_list(ui);
+            }
+        } else {
             warn!("Something went wrong converting egui style");
-            return;
-        };
-        for plugin in &mut plugin_manager.plugins {
-            plugin.free_ui(
-                ui,
-                &style,
-                self.input.clone(),
-                ui.max_rect(),
-                self.config.collect_stats,
-            );
-            plugin.process_paint_list(ui);
         }
 
         ui.input_mut(|i| {
@@ -146,6 +149,16 @@ impl UiManager {
     #[inline(always)]
     pub fn collect_stats(&self) -> bool {
         self.config.collect_stats
+    }
+
+    fn update_input(&mut self, ui: &mut Ui) {
+        let input_options = ui.options(|o| o.input_options);
+        ui.input(|i| {
+            self.input.collect(i, input_options.into());
+        });
+
+        // Plugins read responses 1 frame late, so they need a copy of the pointerstate that won't get updated.
+        self.response_pointerstate = self.input.read(|i| RArc::new(i.pointer.clone()));
     }
 }
 
