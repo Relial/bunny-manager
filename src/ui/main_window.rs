@@ -1,4 +1,4 @@
-use abi_stable::std_types::RArc;
+use abi_stable::std_types::{RArc, ROption::RSome};
 use bunny_ui::input_state::{Input, PointerState};
 use egui::{
     Align2, Checkbox, CollapsingHeader, Color32, CornerRadius, FontId, Frame, Id, Sense, Shadow,
@@ -9,7 +9,11 @@ use tracing::warn;
 use crate::{
     config::Config,
     plugin_manager::PluginManager,
-    ui::{shortcut_button::ShortcutButton, stats::Stats},
+    ui::{
+        license::{BUNNY_LICENSE, D3D8TO9_LICENSE},
+        shortcut_button::ShortcutButton,
+        stats::Stats,
+    },
 };
 
 #[derive(Debug)]
@@ -62,7 +66,14 @@ impl MainWindow {
                     .scroll_source(ScrollSource::MOUSE_WHEEL | ScrollSource::SCROLL_BAR)
                     .show(ui, |ui| {
                         ui.take_available_space();
-                        self.window_content(ui, manager, stats, input, response_pointerstate, config);
+                        self.window_content(
+                            ui,
+                            manager,
+                            stats,
+                            input,
+                            response_pointerstate,
+                            config,
+                        );
                     });
             });
     }
@@ -152,6 +163,8 @@ impl MainWindow {
                 plugin_manager.refresh();
             }
 
+            ui.separator();
+
             let Some(style) = plugin_manager.style(ui).cloned() else {
                 warn!("Something went wrong converting egui style");
                 return;
@@ -207,5 +220,16 @@ impl MainWindow {
                 }
             });
         }
+
+        ui.collapsing("License", |ui| {
+            ui.style_mut().wrap_mode = Some(TextWrapMode::Wrap);
+            ui.label("Bunny Manager license:");
+            ui.label(BUNNY_LICENSE);
+
+            ui.separator();
+
+            ui.label("d3d8to9 license:");
+            ui.label(D3D8TO9_LICENSE);
+        });
     }
 }

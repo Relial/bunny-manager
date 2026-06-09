@@ -1,4 +1,5 @@
-pub mod main_window;
+mod main_window;
 pub mod stats;
 pub mod ui_manager;
-pub mod shortcut_button;
+mod shortcut_button;
+mod license;
