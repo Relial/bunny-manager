@@ -11,7 +11,7 @@ anyhow = "1.0.102"
 egui = { version = "0.34.1", features = ["serde"] }
 egui_extras = { version = "0.34.1", features = ["all_loaders"] }
 egui-d3d9 = { path = "../egui-d3d9" }
-bunny-ui = { path = "../bunny-ui" }
+bunny-ui = { git = "https://github.com/Relial/bunny-ui.git" }
 mimalloc = "0.1.48"
 retour = {version = "0.4.0-alpha.4", features = ["static-detour"]}
 tracing = "0.1.44"

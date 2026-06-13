@@ -13,7 +13,11 @@ use abi_stable::{
 };
 use anyhow::{Result, anyhow};
 use bunny_ui::{
-    input_state::{Input, PointerState}, paint::paintlist::PaintList, response::Response, style::Style, ui::BunnyUi,
+    input_state::{Input, PointerState},
+    paint::paintlist::PaintList,
+    response::Response,
+    style::Style,
+    ui::BunnyUi,
 };
 use egui::{Id, Rect, Ui};
 use rapidhash::fast::RandomState;
