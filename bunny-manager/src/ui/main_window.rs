@@ -10,7 +10,7 @@ use crate::{
     config::Config,
     plugin_manager::PluginManager,
     ui::{
-        license::{BUNNY_LICENSE, D3D8TO9_LICENSE},
+        license::{BUNNY_LICENSE, D3D8TO9_LICENSE, EGUI_D3D9_LICENSE},
         shortcut_button::ShortcutButton,
         stats::Stats,
     },
@@ -230,6 +230,11 @@ impl MainWindow {
 
             ui.label("d3d8to9 license:");
             ui.label(D3D8TO9_LICENSE);
+
+            ui.separator();
+
+            ui.label("egui-d3d9 license:");
+            ui.label(EGUI_D3D9_LICENSE);
         });
     }
 }
