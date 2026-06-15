@@ -30,6 +30,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 pub const PLUGINS_PATH: &str = "plugins/bunny_plugins/";
 pub const CONFIG_PATH: &str = "plugins/bunny_config/";
+pub const FONTS_PATH: &str = "plugins/bunny_fonts/";
 
 mod address;
 mod config;

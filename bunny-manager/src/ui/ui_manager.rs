@@ -1,20 +1,27 @@
 use std::{
-    path::PathBuf,
+    env::current_exe,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
 
 use abi_stable::std_types::RArc;
+use anyhow::{Result, anyhow};
 use bunny_ui::input_state::{Input, PointerState};
 use egui::{
-    Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2, emath::GuiRounding as _, include_image,
-    load::TexturePoll, paint_texture_at,
+    FontData, FontFamily, Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2,
+    emath::GuiRounding as _,
+    epaint::text::{FontInsert, FontPriority, InsertFontFamily},
+    include_image,
+    load::TexturePoll,
+    paint_texture_at,
 };
 use tracing::{debug, error, info, warn};
 
 pub static INIT: AtomicBool = AtomicBool::new(false);
 
 use crate::{
+    FONTS_PATH,
     config::{Config, get_config_path},
     plugin_manager::PLUGIN_MANAGER,
     ui::{main_window::MainWindow, stats::Stats},
@@ -29,6 +36,7 @@ pub struct UiManager {
     response_pointerstate: RArc<PointerState>,
     pub config: Config,
     pub config_path: Option<PathBuf>,
+    fonts_path: Option<PathBuf>,
     last_autosave: Instant,
 }
 
@@ -58,6 +66,14 @@ impl UiManager {
             }
         };
 
+        let fonts_path = match get_fonts_path() {
+            Ok(path) => Some(path),
+            Err(e) => {
+                error!("Failed to get fonts path: {e}");
+                None
+            }
+        };
+
         Self {
             stats: Default::default(),
             main_window: MainWindow::new(&config),
@@ -66,6 +82,7 @@ impl UiManager {
             response_pointerstate: Default::default(),
             config,
             config_path: config_path.ok(),
+            fonts_path,
             last_autosave: Instant::now(),
         }
     }
@@ -144,6 +161,28 @@ impl UiManager {
         egui_extras::install_image_loaders(ui);
         ui.disable_accesskit();
         ui.style_mut().interaction.tooltip_delay = 0.1;
+
+        // egui default font doesn't support JP, this is the fallback
+        ui.add_font(FontInsert::new(
+            "NotoSansJP-Regular",
+            FontData::from_static(include_bytes!("../../assets/NotoSansJP-Regular.ttf")),
+            vec![
+                InsertFontFamily {
+                    family: FontFamily::Proportional,
+                    priority: FontPriority::Lowest,
+                },
+                InsertFontFamily {
+                    family: FontFamily::Monospace,
+                    priority: FontPriority::Lowest,
+                },
+            ],
+        ));
+
+        if let Some(fonts_path) = &self.fonts_path
+            && let Err(e) = add_fonts(fonts_path, ui)
+        {
+            error!("Error adding fonts: {e}");
+        }
     }
 
     #[inline(always)]
@@ -193,4 +232,56 @@ fn paint_cursor(pos: Pos2, ui: &Ui) {
     if let Ok(TexturePoll::Ready { texture }) = texture {
         paint_texture_at(&painter, rect, cursor.image_options(), &texture);
     }
+}
+
+fn get_fonts_path() -> Result<PathBuf> {
+    let mut path = current_exe()?;
+    path.pop();
+    path.push(FONTS_PATH);
+    Ok(path)
+}
+
+fn add_fonts(path: impl AsRef<Path>, ui: &mut Ui) -> Result<()> {
+    let path = path.as_ref();
+    for entry in path
+        .read_dir()
+        .map_err(|e| anyhow!("Failed to read fonts dir at {} {e}", path.display()))?
+    {
+        match entry {
+            Ok(entry) => {
+                let entry_path = entry.path();
+                if let Some(ext) = entry_path.extension()
+                    && (ext.eq_ignore_ascii_case("ttf") || ext.eq_ignore_ascii_case("otf"))
+                {
+                    match std::fs::read(&entry_path) {
+                        Ok(font_bytes) => {
+                            if let Some(file_name) = entry_path.file_stem() {
+                                let n = file_name.to_string_lossy();
+                                ui.add_font(FontInsert::new(
+                                    &n,
+                                    FontData::from_owned(font_bytes),
+                                    vec![InsertFontFamily {
+                                        family: FontFamily::Name(n.clone().into()),
+                                        priority: FontPriority::Highest,
+                                    }],
+                                ));
+                            } else {
+                                error!(
+                                    "Failed to extract file name from path {}",
+                                    entry_path.display()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to read font file at {}: {e}", entry_path.display());
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Error reading directory entry: {e}");
+            }
+        }
+    }
+    Ok(())
 }
