@@ -377,7 +377,7 @@ fn find_plugins<'a>(plugin_dirs: &PluginDirs) -> Result<Vec<BunnyPlugin<'a>>> {
             Ok(entry) => {
                 let entry_path = entry.path();
                 if let Some(ext) = entry_path.extension()
-                    && ext == "dll"
+                    && ext.eq_ignore_ascii_case("dll")
                 {
                     match entry_path.canonicalize() {
                         Ok(absolute_path) => {
