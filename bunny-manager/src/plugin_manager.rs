@@ -372,25 +372,31 @@ fn find_plugins<'a>(plugin_dirs: &PluginDirs) -> Result<Vec<BunnyPlugin<'a>>> {
     for entry in path
         .read_dir()
         .map_err(|e| anyhow!("Failed to read plugin dir at {} {e}", path.display()))?
-        .flatten()
     {
-        let entry_path = entry.path();
-        if let Some(ext) = entry_path.extension()
-            && ext == "dll"
-        {
-            match entry_path.canonicalize() {
-                Ok(absolute_path) => {
-                    let file_name = entry_path
-                        .file_stem()
-                        .unwrap_or(OsStr::new("?"))
-                        .to_string_lossy()
-                        .to_string();
-                    plugins.push(BunnyPlugin::new(file_name, absolute_path));
+        match entry {
+            Ok(entry) => {
+                let entry_path = entry.path();
+                if let Some(ext) = entry_path.extension()
+                    && ext == "dll"
+                {
+                    match entry_path.canonicalize() {
+                        Ok(absolute_path) => {
+                            let file_name = entry_path
+                                .file_stem()
+                                .unwrap_or(OsStr::new("?"))
+                                .to_string_lossy()
+                                .to_string();
+                            plugins.push(BunnyPlugin::new(file_name, absolute_path));
+                        }
+                        Err(e) => error!(
+                            "Failed to convert path at {} to absolute: {e}",
+                            entry_path.display()
+                        ),
+                    }
                 }
-                Err(e) => error!(
-                    "Failed to convert path at {} to absolute: {e}",
-                    entry_path.display()
-                ),
+            }
+            Err(e) => {
+                error!("Error reading directory entry: {e}");
             }
         }
     }
