@@ -46,12 +46,15 @@ impl<T: std::fmt::Debug> EguiDx9<T> {
         dev: &IDirect3DDevice9,
         hwnd: HWND,
         ui_fn: impl FnMut(&mut Ui, &mut T) + 'static,
-        ui_state: T,
+        ui_create: impl FnOnce(&Context) -> T,
         reactive: bool,
     ) -> Self {
         if hwnd.is_invalid() {
             panic!("invalid hwnd specified in egui init");
         }
+
+        let ctx = Context::default();
+        let ui_state = ui_create(&ctx);
 
         Self {
             ui_fn: Box::new(ui_fn),

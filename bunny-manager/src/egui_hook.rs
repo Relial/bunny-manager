@@ -1,8 +1,7 @@
 use std::{
     cell::OnceCell,
-    ffi::c_void,
     mem::transmute,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{OnceLock, atomic::Ordering},
 };
 
 use anyhow::{Result, anyhow};
@@ -24,10 +23,13 @@ use windows::{
     core::HRESULT,
 };
 
-use crate::ui::ui_manager::{INIT, UiManager, ui};
+use crate::{
+    address::Addresses,
+    ui::ui_manager::{INIT, UiManager, ui},
+};
 
 pub static mut APP: OnceCell<EguiDx9<UiManager>> = OnceCell::new();
-pub static GAME_HWND: AtomicUsize = AtomicUsize::new(0);
+pub static mut ADDRESSES: OnceLock<Addresses> = OnceLock::new();
 static mut O_WND_PROC: Option<WNDPROC> = None;
 
 type FnPresent = unsafe extern "system" fn(
@@ -53,8 +55,17 @@ fn hk_present(
 ) -> HRESULT {
     unsafe {
         let app = APP.get_mut_or_init(|| {
-            let hwnd = HWND(GAME_HWND.load(Ordering::Relaxed) as *mut c_void);
-            let egui = EguiDx9::init(&device, hwnd, ui, UiManager::new(), false);
+            let addresses = ADDRESSES
+                .get()
+                .expect("Addresses must be initialized before D3D9 hooks.");
+            let hwnd = addresses.hwnd();
+            let egui = EguiDx9::init(
+                &device,
+                hwnd,
+                ui,
+                |creation_context| UiManager::new(creation_context, *addresses),
+                false,
+            );
             let o_wnd_proc: WNDPROC = transmute(SetWindowLongPtrA(
                 hwnd,
                 GWLP_WNDPROC,

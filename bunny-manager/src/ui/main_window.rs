@@ -1,10 +1,7 @@
-use abi_stable::std_types::RArc;
-use bunny_ui::input_state::{Input, PointerState};
 use egui::{
-    Align2, Checkbox, CollapsingHeader, Color32, CornerRadius, FontId, Frame, Id, Sense, Shadow,
-    TextWrapMode, Ui, scroll_area::ScrollSource, vec2,
+    Align2, Color32, CornerRadius, FontId, Frame, Id, Sense, Shadow, TextWrapMode, Ui,
+    scroll_area::ScrollSource, vec2,
 };
-use tracing::warn;
 
 use crate::{
     config::Config,
@@ -33,8 +30,6 @@ impl MainWindow {
         ui: &mut Ui,
         stats: &mut Stats,
         manager: &mut PluginManager,
-        input: Input,
-        response_pointerstate: RArc<PointerState>,
         config: &mut Config,
     ) {
         let frame = Frame::new()
@@ -66,14 +61,7 @@ impl MainWindow {
                     .scroll_source(ScrollSource::MOUSE_WHEEL | ScrollSource::SCROLL_BAR)
                     .show(ui, |ui| {
                         ui.take_available_space();
-                        self.window_content(
-                            ui,
-                            manager,
-                            stats,
-                            input,
-                            response_pointerstate,
-                            config,
-                        );
+                        self.window_content(ui, manager, stats, config);
                     });
             });
     }
@@ -123,8 +111,6 @@ impl MainWindow {
         ui: &mut Ui,
         plugin_manager: &mut PluginManager,
         stats: &mut Stats,
-        input: Input,
-        response_pointerstate: RArc<PointerState>,
         config: &mut Config,
     ) {
         ui.collapsing("Settings", |ui| {
@@ -156,8 +142,6 @@ impl MainWindow {
             ));
         });
 
-        let dll_info = plugin_manager.addresses.dll_info;
-
         ui.collapsing("Plugins", |ui| {
             if ui.button("Refresh").clicked() {
                 plugin_manager.refresh();
@@ -165,43 +149,7 @@ impl MainWindow {
 
             ui.separator();
 
-            let Some(style) = plugin_manager.style(ui).cloned() else {
-                warn!("Something went wrong converting egui style");
-                return;
-            };
-
-            for plugin in &mut plugin_manager.plugins {
-                ui.horizontal(|ui| {
-                    let mut temp = plugin.loaded;
-                    ui.scope(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        if ui.add(Checkbox::without_text(&mut temp)).clicked() {
-                            if plugin.loaded {
-                                plugin.unload();
-                            } else {
-                                plugin.load(&plugin_manager.dirs.configs, dll_info);
-                            }
-                        }
-                    });
-                    if plugin.enabled() {
-                        CollapsingHeader::new(&plugin.name).show(ui, |ui| {
-                            plugin.menu_ui(
-                                ui,
-                                &style,
-                                input.clone(),
-                                response_pointerstate.clone(),
-                                ui.max_rect(),
-                                config.collect_stats,
-                            );
-                            plugin.process_paint_list(ui);
-                        });
-                    } else {
-                        ui.scope(|ui| {
-                            ui.label(&plugin.name);
-                        });
-                    }
-                });
-            }
+            plugin_manager.menu_ui(ui, config);
         });
 
         if config.collect_stats {
@@ -213,8 +161,8 @@ impl MainWindow {
             ui.collapsing("Plugin stats", |ui| {
                 for plugin in &mut plugin_manager.plugins {
                     plugin.stats.update();
-                    ui.strong(&plugin.name);
-                    ui.indent(&plugin.name, |ui| {
+                    ui.strong(&plugin.file_name);
+                    ui.indent(&plugin.file_name, |ui| {
                         plugin.stats.ui(ui);
                     });
                 }

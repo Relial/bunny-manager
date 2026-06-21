@@ -1,25 +1,27 @@
 use std::{
-    env::current_exe,
+    borrow::Cow,
     ffi::{OsStr, c_void},
     mem::transmute,
-    path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    path::PathBuf,
     thread::JoinHandle,
 };
 
 use abi_stable::{
     external_types::RRwLock,
-    std_types::{RArc, RHashMap, RStr},
+    std_types::{RArc, RHashMap, RString},
 };
-use anyhow::{Result, anyhow};
-use bunny_ui::{
-    input_state::{Input, PointerState},
-    paint::paintlist::PaintList,
-    response::Response,
-    style::Style,
-    ui::BunnyUi,
+use anyhow::{Context as _, Result, anyhow};
+use bunny_plugin::{
+    PluginContext, PluginInfo,
+    bunny_ui::{
+        self,
+        input_state::{Input, PointerState},
+        paint::paintlist::PaintList,
+        response::Response,
+        ui::BunnyUi,
+    },
 };
-use egui::{Id, Rect, Ui};
+use egui::{Checkbox, CollapsingHeader, Id, Rect, Ui};
 use rapidhash::fast::RandomState;
 use tracing::{error, info, warn};
 use windows::{
@@ -31,57 +33,122 @@ use windows::{
 };
 
 use crate::{
-    CONFIG_PATH, PLUGINS_PATH,
-    address::{Addresses, MainDllInfo},
-    ui::stats::PluginStats,
+    CONFIG_PATH, EXE_PATH, PLUGINS_PATH, address::Addresses, config::Config, ui::stats::PluginStats,
 };
-
-pub static PLUGIN_MANAGER: OnceLock<Mutex<PluginManager>> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct PluginManager<'a> {
     pub plugins: Vec<BunnyPlugin<'a>>,
-    global_style: Option<Style>,
+    global_style: bunny_ui::style::Style,
     pub dirs: PluginDirs,
     pub addresses: Addresses,
+    pub fonts: Vec<String>,
+    pub input: Input,
+    response_pointerstate: RArc<PointerState>,
 }
 
 impl<'a> PluginManager<'a> {
-    pub fn new(addresses: Addresses) -> Result<Self> {
-        let dirs = PluginDirs::new()?;
-        let mut plugins = find_plugins(&dirs)?;
-        for plugin in &mut plugins {
-            plugin.load(&dirs.configs, addresses.dll_info);
-        }
-        Ok(Self {
+    pub fn new(addresses: Addresses, fonts: Vec<String>, creation_context: &egui::Context) -> Self {
+        let dirs = PluginDirs::new();
+        let plugins = find_plugins(&dirs).unwrap_or_else(|e| {
+            error!("Error finding plugins: {e:#}");
+            Vec::new()
+        });
+        let global_style = bunny_ui::style::Style::from_egui(&creation_context.global_style());
+        Self {
             plugins,
-            global_style: None,
+            global_style,
             dirs,
             addresses,
-        })
-    }
-
-    pub fn style(&mut self, ui: &egui::Ui) -> Option<&Style> {
-        self.global_style
-            .get_or_insert_with(|| Style::from_egui(ui.style()));
-        self.global_style.as_ref()
+            fonts,
+            input: Default::default(),
+            response_pointerstate: Default::default(),
+        }
     }
 
     pub fn refresh(&mut self) {
         if let Ok(new_plugins) = find_plugins(&self.dirs) {
             self.plugins
                 .retain(|existing_plugin| new_plugins.contains(existing_plugin));
+            let context = PluginContext::new(
+                self.addresses.dll_info,
+                self.dirs.configs.to_string_lossy(),
+                &self.fonts,
+            );
             for mut plugin in new_plugins {
                 if !self.plugins.contains(&plugin) {
-                    plugin.load(&self.dirs.configs, self.addresses.dll_info);
+                    plugin.load(context.clone());
                     self.plugins.push(plugin);
                 }
             }
         }
     }
+
+    pub fn update_input(&mut self, ui: &mut Ui) {
+        let input_options = ui.options(|o| o.input_options);
+        ui.input(|i| {
+            self.input.collect(i, input_options.into());
+        });
+
+        // Plugins read responses 1 frame late, so they need a copy of the pointerstate that won't get updated.
+        self.response_pointerstate = self.input.read(|i| RArc::new(i.pointer.clone()));
+    }
+
+    pub fn menu_ui(&mut self, ui: &mut Ui, config: &Config) {
+        for plugin in &mut self.plugins {
+            ui.horizontal(|ui| {
+                let mut temp = plugin.loaded;
+                ui.scope(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    if ui.add(Checkbox::without_text(&mut temp)).clicked() {
+                        if plugin.loaded {
+                            plugin.unload();
+                        } else {
+                            plugin.load(PluginContext::new(
+                                self.addresses.dll_info,
+                                self.dirs.configs_str.as_str(),
+                                &self.fonts,
+                            ));
+                        }
+                    }
+                });
+                if plugin.enabled() {
+                    CollapsingHeader::new(plugin.name_version()).show(ui, |ui| {
+                        plugin.menu_ui(
+                            ui,
+                            &self.global_style,
+                            self.input.clone(),
+                            self.response_pointerstate.clone(),
+                            ui.max_rect(),
+                            config.collect_stats,
+                        );
+                        plugin.process_paint_list(ui);
+                    });
+                } else {
+                    ui.scope(|ui| {
+                        ui.label(&plugin.file_name);
+                    });
+                }
+            });
+        }
+    }
+
+    pub fn free_ui(&mut self, ui: &mut Ui, config: &Config) {
+        for plugin in &mut self.plugins {
+            plugin.free_ui(
+                ui,
+                &self.global_style,
+                self.input.clone(),
+                self.response_pointerstate.clone(),
+                ui.max_rect(),
+                config.collect_stats,
+            );
+            plugin.process_paint_list(ui);
+        }
+    }
 }
 
-type FnPluginInit = unsafe extern "C" fn(RStr, MainDllInfo) -> bool;
+type FnPluginInit = unsafe extern "C" fn(PluginContext) -> PluginInfo;
 type FnPluginMenu = unsafe extern "C" fn(&mut BunnyUi);
 type FnPluginUi = unsafe extern "C" fn(&mut BunnyUi);
 type FnPluginUnload = unsafe extern "C" fn();
@@ -129,8 +196,9 @@ impl PluginFuncs {
 
 #[derive(Clone)]
 pub struct BunnyPlugin<'a> {
-    pub name: String,
+    pub file_name: String,
     pub loaded: bool,
+    pub info: Option<PluginInfo>,
     pub stats: PluginStats,
     funcs: Option<PluginFuncs>,
     handle: Option<usize>,
@@ -141,10 +209,11 @@ pub struct BunnyPlugin<'a> {
 }
 
 impl BunnyPlugin<'_> {
-    fn new(name: String, plugin_path: PathBuf) -> Self {
+    fn new(file_name: String, plugin_path: PathBuf) -> Self {
         Self {
-            name,
+            file_name,
             loaded: false,
+            info: None,
             stats: PluginStats::default(),
             funcs: None,
             handle: None,
@@ -155,42 +224,39 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    pub fn load(&mut self, config_dir_path: impl AsRef<Path>, main_dll_info: MainDllInfo) {
+    pub fn load(&mut self, plugin_context: PluginContext) {
         match unsafe { LoadLibraryW(&HSTRING::from(self.plugin_path.as_path())) } {
             Ok(module) => {
                 self.handle = Some(module.0 as usize);
                 self.loaded = true;
-                info!("{} loaded", &self.name);
+                info!("{} loaded", &self.file_name);
                 match PluginFuncs::new(module) {
                     Ok(funcs) => match get_plugin_api_version(module) {
                         Ok(plugin_api_ver) => {
-                            if plugin_api_ver == bunny_ui::BUNNY_API_VERSION {
-                                if unsafe {
-                                    (funcs.init)(
-                                        config_dir_path.as_ref().to_string_lossy().as_ref().into(),
-                                        main_dll_info,
-                                    )
-                                } {
-                                    self.funcs = Some(funcs);
+                            if plugin_api_ver == bunny_plugin::BUNNY_API_VERSION {
+                                let info = unsafe { (funcs.init)(plugin_context) };
+                                if let Err(e) = info.init() {
+                                    warn!("{} failed to initialize: {e:#}", info.name());
                                 } else {
-                                    warn!("{} failed to initialize", self.name);
+                                    self.info = Some(info);
+                                    self.funcs = Some(funcs);
                                 }
                             } else {
                                 error!(
                                     "{} BunnyUI API version mismatch | Manager API version: {} | Plugin API version: {}",
-                                    self.name,
-                                    bunny_ui::BUNNY_API_VERSION,
+                                    self.file_name,
+                                    bunny_plugin::BUNNY_API_VERSION,
                                     plugin_api_ver
                                 )
                             }
                         }
-                        Err(e) => error!("{}: {}", self.name, e),
+                        Err(e) => error!("{}: {}", self.file_name, e),
                     },
-                    Err(e) => error!("{}: {}", self.name, e),
+                    Err(e) => error!("{}: {}", self.file_name, e),
                 }
             }
             Err(e) => {
-                error!("Error loading {}: {e}", &self.name);
+                error!("Error loading {}: {e:#}", &self.file_name);
                 self.loaded = false;
             }
         }
@@ -199,7 +265,7 @@ impl BunnyPlugin<'_> {
     pub fn menu_ui(
         &mut self,
         ui: &mut Ui,
-        style: &Style,
+        style: &bunny_ui::style::Style,
         input: Input,
         response_pointerstate: RArc<PointerState>,
         available_space: Rect,
@@ -243,7 +309,7 @@ impl BunnyPlugin<'_> {
     pub fn free_ui(
         &mut self,
         ui: &mut Ui,
-        style: &Style,
+        style: &bunny_ui::style::Style,
         input: Input,
         response_pointerstate: RArc<PointerState>,
         available_space: Rect,
@@ -307,13 +373,13 @@ impl BunnyPlugin<'_> {
             if let Some(handle) = self.save()
                 && handle.join().is_err()
             {
-                error!("Error saving plugin {}", self.name);
+                error!("Error saving plugin {}", self.file_name);
             }
             let module = HMODULE(handle as *mut c_void);
             if let Err(e) = unsafe { FreeLibrary(module) } {
-                error!("Error unloading plugin {} {e}", self.name);
+                error!("Error unloading plugin {}: {e:#}", self.file_name);
             } else {
-                info!("Unloaded {}", self.name);
+                info!("Unloaded {}", self.file_name);
             }
         }
         self.funcs = None;
@@ -327,11 +393,19 @@ impl BunnyPlugin<'_> {
     pub fn enabled(&self) -> bool {
         self.funcs.is_some()
     }
+
+    pub fn name_version<'a>(&'a self) -> Cow<'a, str> {
+        if let Some(plugin_info) = &self.info {
+            format!("{} - {}", plugin_info.name(), plugin_info.version()).into()
+        } else {
+            Cow::from(&self.file_name)
+        }
+    }
 }
 
 impl PartialEq for BunnyPlugin<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
+        self.file_name == other.file_name
     }
 }
 
@@ -339,30 +413,24 @@ impl PartialEq for BunnyPlugin<'_> {
 pub struct PluginDirs {
     pub plugins: PathBuf,
     pub configs: PathBuf,
+    pub configs_str: RString,
 }
 
 impl PluginDirs {
-    pub fn new() -> Result<Self> {
-        let mut plugins_path = current_exe()?;
-        plugins_path.pop();
-        let mut config_path = plugins_path.clone();
-        plugins_path.push(PLUGINS_PATH);
-        config_path.push(CONFIG_PATH);
-
-        if !plugins_path.is_dir() {
-            std::fs::create_dir(&plugins_path).map_err(|e| {
-                anyhow!("Failed to create plugin dir {} {e}", plugins_path.display())
-            })?;
-        }
-        if !config_path.is_dir() {
-            std::fs::create_dir(&config_path).map_err(|e| {
-                anyhow!("Failed to create config dir {} {e}", config_path.display())
-            })?;
-        }
-        Ok(Self {
+    pub fn new() -> Self {
+        let mut base = EXE_PATH
+            .get()
+            .cloned()
+            .expect("EXE_PATH not initialized before plugin manager init");
+        base.pop();
+        let plugins_path = base.join(PLUGINS_PATH);
+        let config_path = base.join(CONFIG_PATH);
+        let configs_str = config_path.to_string_lossy().into();
+        Self {
             plugins: plugins_path,
             configs: config_path,
-        })
+            configs_str,
+        }
     }
 }
 
@@ -371,7 +439,7 @@ fn find_plugins<'a>(plugin_dirs: &PluginDirs) -> Result<Vec<BunnyPlugin<'a>>> {
     let mut plugins = Vec::new();
     for entry in path
         .read_dir()
-        .map_err(|e| anyhow!("Failed to read plugin dir at {} {e}", path.display()))?
+        .with_context(|| format!("Failed to read plugin dir at {}", path.display()))?
     {
         match entry {
             Ok(entry) => {
@@ -389,14 +457,14 @@ fn find_plugins<'a>(plugin_dirs: &PluginDirs) -> Result<Vec<BunnyPlugin<'a>>> {
                             plugins.push(BunnyPlugin::new(file_name, absolute_path));
                         }
                         Err(e) => error!(
-                            "Failed to convert path at {} to absolute: {e}",
+                            "Failed to convert path at {} to absolute: {e:#}",
                             entry_path.display()
                         ),
                     }
                 }
             }
             Err(e) => {
-                error!("Error reading directory entry: {e}");
+                error!("Error reading directory entry: {e:#}");
             }
         }
     }
@@ -414,7 +482,7 @@ fn get_plugin_api_version(module: HMODULE) -> Result<u32> {
 impl std::fmt::Debug for BunnyPlugin<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BunnyPlugin")
-            .field("name", &self.name)
+            .field("name", &self.file_name)
             .field("loaded", &self.loaded)
             .field("stats", &self.stats)
             .field("handle", &self.handle)

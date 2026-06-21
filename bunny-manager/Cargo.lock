@@ -269,7 +269,7 @@ version = "0.1.0"
 dependencies = [
  "abi_stable",
  "anyhow",
- "bunny-ui",
+ "bunny-plugin",
  "egui",
  "egui-d3d9",
  "egui_extras",
@@ -284,6 +284,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "windows",
+]
+
+[[package]]
+name = "bunny-plugin"
+version = "0.1.0"
+dependencies = [
+ "abi_stable",
+ "anyhow",
+ "bunny-ui",
 ]
 
 [[package]]
