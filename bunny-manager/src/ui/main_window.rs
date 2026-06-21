@@ -160,13 +160,7 @@ impl MainWindow {
             });
 
             ui.collapsing("Plugin stats", |ui| {
-                for plugin in &mut plugin_manager.plugins {
-                    plugin.stats.update();
-                    ui.strong(&plugin.file_name);
-                    ui.indent(&plugin.file_name, |ui| {
-                        plugin.stats.ui(ui);
-                    });
-                }
+                plugin_manager.stats_ui(ui);
             });
         }
 

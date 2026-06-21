@@ -8,7 +8,7 @@ use windows::{
 
 #[derive(Clone, Copy, Debug)]
 pub struct Addresses {
-    pub dll_info: MhfoInfo,
+    pub mhfo_info: MhfoInfo,
     hwnd: usize,
     pub game_state: usize,
     pub game_shutdown: usize,
@@ -33,13 +33,13 @@ impl Addresses {
         let dll = mhfo_info.address;
         match mhfo_info.game_mode {
             GameMode::LowGrade => Self {
-                dll_info: mhfo_info,
+                mhfo_info,
                 hwnd: dll + 0x5bd9e08,
                 game_state: dll + 0x5b460d0,
                 game_shutdown: dll + 0x1568a6f,
             },
             GameMode::HighGrade => Self {
-                dll_info: mhfo_info,
+                mhfo_info,
                 hwnd: dll + 0xe811a38,
                 game_state: dll + 0xe77dcf8,
                 game_shutdown: dll + 0x158f8bf,

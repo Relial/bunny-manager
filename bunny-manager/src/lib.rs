@@ -77,7 +77,7 @@ fn fallible() -> Result<()> {
     let addresses = find_addresses();
     info!(
         "Running {}, found main dll at {:#x}",
-        addresses.dll_info.game_mode, addresses.dll_info.address
+        addresses.mhfo_info.game_mode, addresses.mhfo_info.address
     );
     unsafe {
         while (addresses.game_state as *const u8).read() == 0 {

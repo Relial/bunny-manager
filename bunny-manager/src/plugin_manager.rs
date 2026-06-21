@@ -3,7 +3,8 @@ use std::{
     ffi::{OsStr, c_void},
     mem::transmute,
     path::PathBuf,
-    thread::JoinHandle,
+    thread::{JoinHandle, sleep},
+    time::{Duration, Instant},
 };
 
 use abi_stable::{
@@ -36,9 +37,11 @@ use crate::{
     CONFIG_PATH, EXE_PATH, PLUGINS_PATH, address::Addresses, config::Config, ui::stats::PluginStats,
 };
 
+pub const SAVE_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Debug)]
 pub struct PluginManager<'a> {
-    pub plugins: Vec<BunnyPlugin<'a>>,
+    plugins: Vec<BunnyPlugin<'a>>,
     global_style: bunny_ui::style::Style,
     pub dirs: PluginDirs,
     pub addresses: Addresses,
@@ -66,12 +69,23 @@ impl<'a> PluginManager<'a> {
         }
     }
 
+    pub fn load_all(&mut self) {
+        let context = PluginContext::new(
+            self.addresses.mhfo_info,
+            self.dirs.configs_str.clone(),
+            &self.fonts,
+        );
+        for plugin in &mut self.plugins {
+            plugin.load(context.clone());
+        }
+    }
+
     pub fn refresh(&mut self) {
         if let Ok(new_plugins) = find_plugins(&self.dirs) {
             self.plugins
                 .retain(|existing_plugin| new_plugins.contains(existing_plugin));
             let context = PluginContext::new(
-                self.addresses.dll_info,
+                self.addresses.mhfo_info,
                 self.dirs.configs.to_string_lossy(),
                 &self.fonts,
             );
@@ -102,10 +116,11 @@ impl<'a> PluginManager<'a> {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     if ui.add(Checkbox::without_text(&mut temp)).clicked() {
                         if plugin.loaded {
+                            plugin.save_blocking();
                             plugin.unload();
                         } else {
                             plugin.load(PluginContext::new(
-                                self.addresses.dll_info,
+                                self.addresses.mhfo_info,
                                 self.dirs.configs_str.as_str(),
                                 &self.fonts,
                             ));
@@ -144,6 +159,37 @@ impl<'a> PluginManager<'a> {
                 config.collect_stats,
             );
             plugin.process_paint_list(ui);
+        }
+    }
+
+    pub fn stats_ui(&mut self, ui: &mut Ui) {
+        for plugin in &mut self.plugins {
+            plugin.stats.update();
+            ui.strong(plugin.name());
+            ui.indent(&plugin.file_name, |ui| {
+                plugin.stats.ui(ui);
+            });
+        }
+    }
+
+    pub fn save_all(&self) -> Vec<JoinHandle<()>> {
+        self.plugins.iter().flat_map(|p| p.save()).collect()
+    }
+
+    pub fn save_all_blocking(&self) {
+        let handles = self.save_all();
+        let save_start = Instant::now();
+        while save_start.elapsed() < SAVE_TIMEOUT {
+            if handles.iter().all(|h| h.is_finished()) {
+                break;
+            }
+            sleep(Duration::from_millis(100));
+        }
+    }
+
+    pub fn unload_all(&mut self) {
+        for plugin in &mut self.plugins {
+            plugin.unload();
         }
     }
 }
@@ -359,6 +405,18 @@ impl BunnyPlugin<'_> {
         }
     }
 
+    pub fn save_blocking(&self) {
+        if let Some(handle) = self.save() {
+            let save_start = Instant::now();
+            while save_start.elapsed() < SAVE_TIMEOUT {
+                if handle.is_finished() {
+                    break;
+                }
+                sleep(Duration::from_millis(100));
+            }
+        }
+    }
+
     pub fn process_paint_list(&mut self, ui: &mut Ui) {
         if self.enabled() {
             self.paint_list.write().ui(ui);
@@ -392,6 +450,14 @@ impl BunnyPlugin<'_> {
 
     pub fn enabled(&self) -> bool {
         self.funcs.is_some()
+    }
+
+    pub fn name(&self) -> &str {
+        if let Some(plugin_info) = &self.info {
+            plugin_info.name()
+        } else {
+            &self.file_name
+        }
     }
 
     pub fn name_version<'a>(&'a self) -> Cow<'a, str> {

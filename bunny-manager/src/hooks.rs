@@ -1,8 +1,3 @@
-use std::{
-    thread::sleep,
-    time::{Duration, Instant},
-};
-
 use anyhow::Result;
 use ilhook::x86::{CallbackOption, ClosureHookPoint, HookFlags, hook_closure_jmp_back};
 use tracing::{error, info};
@@ -11,41 +6,19 @@ use crate::{address::Addresses, egui_hook::APP};
 
 #[allow(static_mut_refs)]
 fn hook_game_shutdown<'a>(addresses: Addresses) -> Result<ClosureHookPoint<'a>> {
-    const SAVE_TIMEOUT: Duration = Duration::from_secs(5);
-
     let on_call = |_| {
         if let Some(app) = unsafe { APP.get_mut() } {
             let state = app.state_mut();
             info!("Saving configs");
-            let mut handles: Vec<_> = state
-                .plugin_manager
-                .plugins
-                .iter()
-                .flat_map(|p| p.save())
-                .collect();
-            let config_path = &state.config_path;
-            let config = state.config;
-            let handle = std::thread::spawn(move || {
-                if let Some(path) = config_path
-                    && let Err(e) = config.save(path)
-                {
-                    error!("Config save error: {e:#}");
-                }
-            });
-            handles.push(handle);
-
-            let save_start = Instant::now();
-            while save_start.elapsed() < SAVE_TIMEOUT {
-                if handles.iter().all(|h| h.is_finished()) {
-                    break;
-                }
-                sleep(Duration::from_millis(100));
+            state.plugin_manager.save_all_blocking();
+            if let Some(config_path) = &state.config_path
+                && let Err(e) = state.config.save(config_path)
+            {
+                error!("Config save error: {e:#}");
             }
 
             info!("Running plugin unload funcs");
-            for plugin in &mut state.plugin_manager.plugins {
-                plugin.unload();
-            }
+            state.plugin_manager.unload_all();
         }
     };
     let hook = unsafe {

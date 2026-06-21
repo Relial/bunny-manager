@@ -5,7 +5,6 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
-use bunny_plugin::PluginContext;
 use egui::{
     FontData, FontFamily, Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2,
     emath::GuiRounding as _,
@@ -74,15 +73,8 @@ impl UiManager<'_> {
 
         let fonts = ui_init(creation_context, &fonts_path);
         let mut plugin_manager = PluginManager::new(addresses, fonts, creation_context);
-        let context = PluginContext::new(
-            addresses.dll_info,
-            plugin_manager.dirs.configs_str.as_str(),
-            &plugin_manager.fonts,
-        );
         info!("Loading plugins");
-        for plugin in &mut plugin_manager.plugins {
-            plugin.load(context.clone());
-        }
+        plugin_manager.load_all();
         info!("Loading done");
 
         Self {
@@ -114,9 +106,7 @@ impl UiManager<'_> {
                     error!("Config save error: {e:#}");
                 }
             });
-            for plugin in &self.plugin_manager.plugins {
-                plugin.save();
-            }
+            self.plugin_manager.save_all();
             self.last_autosave = Instant::now();
         }
 
