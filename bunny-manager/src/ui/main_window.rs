@@ -59,6 +59,7 @@ impl MainWindow {
 
                 egui::ScrollArea::both()
                     .scroll_source(ScrollSource::MOUSE_WHEEL | ScrollSource::SCROLL_BAR)
+                    .wheel_scroll_multiplier(vec2(1.0, 2.5))
                     .show(ui, |ui| {
                         ui.take_available_space();
                         self.window_content(ui, manager, stats, config);
