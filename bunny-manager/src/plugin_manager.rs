@@ -37,16 +37,16 @@ use crate::{
     CONFIG_PATH, EXE_PATH, PLUGINS_PATH, address::Addresses, config::Config, ui::stats::PluginStats,
 };
 
-pub const SAVE_TIMEOUT: Duration = Duration::from_secs(5);
+const SAVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub struct PluginManager<'a> {
     plugins: Vec<BunnyPlugin<'a>>,
     global_style: bunny_ui::style::Style,
-    pub dirs: PluginDirs,
-    pub addresses: Addresses,
-    pub fonts: Vec<String>,
-    pub input: Input,
+    dirs: PluginDirs,
+    addresses: Addresses,
+    fonts: Vec<String>,
+    input: Input,
     response_pointerstate: RArc<PointerState>,
 }
 
