@@ -7,6 +7,7 @@ use std::{
 use anyhow::{Result, anyhow};
 use egui_d3d9::EguiDx9;
 use retour::static_detour;
+use tracing::debug;
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
@@ -55,6 +56,7 @@ fn hk_present(
 ) -> HRESULT {
     unsafe {
         let app = APP.get_mut_or_init(|| {
+            debug!("Initializing EguiDx9");
             let addresses = ADDRESSES
                 .get()
                 .expect("Addresses must be initialized before D3D9 hooks.");
@@ -66,12 +68,14 @@ fn hk_present(
                 |creation_context| UiManager::new(creation_context, *addresses),
                 false,
             );
+            debug!("EguiDx9 initialized. Calling SetWindowLongPtrA");
             let o_wnd_proc: WNDPROC = transmute(SetWindowLongPtrA(
                 hwnd,
                 GWLP_WNDPROC,
                 hk_wnd_proc as *const () as _,
             ));
             O_WND_PROC = Some(o_wnd_proc);
+            debug!("All init done");
             egui
         });
         let collect_stats = app.state().collect_stats();
@@ -97,7 +101,8 @@ fn hk_reset(
     presentation_parameters: *const D3DPRESENT_PARAMETERS,
 ) -> HRESULT {
     unsafe {
-        let app = APP.get_mut().unwrap();
+        debug!("hk_reset called");
+        let app = APP.get_mut().expect("EguiDx9 not initialized at hk_reset");
         app.pre_reset();
         INIT.store(false, Ordering::Relaxed);
         ResetHook.call(device, presentation_parameters)
@@ -107,7 +112,7 @@ fn hk_reset(
 #[allow(static_mut_refs)]
 fn hk_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
-        APP.get_mut().unwrap().wnd_proc(msg, wparam, lparam);
+        APP.get_mut().expect("EguiDx9 not initialized at hk_wnd_proc").wnd_proc(msg, wparam, lparam);
         CallWindowProcW(O_WND_PROC.unwrap(), hwnd, msg, wparam, lparam)
     }
 }
@@ -143,7 +148,9 @@ pub fn hook(hwnd: HWND) -> Result<()> {
         )
     };
     let reset = vtable[16];
+    debug!("Found reset at {:X?}", reset);
     let present = vtable[17];
+    debug!("Found present at {:X?}", present);
     unsafe {
         let present: FnPresent = transmute(present);
         let reset: FnReset = transmute(reset);
@@ -152,7 +159,9 @@ pub fn hook(hwnd: HWND) -> Result<()> {
         ResetHook.initialize(reset, hk_reset)?;
 
         PresentHook.enable()?;
+        debug!("Present hooked");
         ResetHook.enable()?;
+        debug!("Reset hooked");
     }
     Ok(())
 }
