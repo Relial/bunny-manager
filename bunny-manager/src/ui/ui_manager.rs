@@ -18,7 +18,7 @@ use tracing::{debug, error, info, warn};
 pub static INIT: AtomicBool = AtomicBool::new(false);
 
 use crate::{
-    EXE_PATH, FONTS_PATH,
+    EXE_PATH, FONTS_PATH, LOG_LEVEL,
     address::Addresses,
     config::{Config, get_config_path},
     plugin_manager::PluginManager,
@@ -67,12 +67,15 @@ impl UiManager<'_> {
         let mut fonts_path = EXE_PATH
             .get()
             .cloned()
-            .expect("EXE_PATH not initialized before UI manager init");
+            .expect("EXE_PATH must be initialized before UI manager init");
         fonts_path.pop();
         fonts_path.push(FONTS_PATH);
 
         let fonts = ui_init(creation_context, &fonts_path);
-        let mut plugin_manager = PluginManager::new(addresses, fonts, creation_context);
+        let log_level = LOG_LEVEL
+            .get()
+            .expect("LOG_LEVEL must be initialized before UI manager init");
+        let mut plugin_manager = PluginManager::new(addresses, fonts, *log_level, creation_context);
         info!("Loading plugins");
         plugin_manager.load_all();
         info!("Loading done");

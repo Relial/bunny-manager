@@ -1,8 +1,4 @@
-use std::{
-    cell::OnceCell,
-    mem::transmute,
-    sync::{OnceLock, atomic::Ordering},
-};
+use std::{cell::OnceCell, mem::transmute, sync::atomic::Ordering};
 
 use anyhow::{Result, anyhow};
 use egui_d3d9::EguiDx9;
@@ -25,12 +21,11 @@ use windows::{
 };
 
 use crate::{
-    address::Addresses,
+    ADDRESSES,
     ui::ui_manager::{INIT, UiManager, ui},
 };
 
 pub static mut APP: OnceCell<EguiDx9<UiManager>> = OnceCell::new();
-pub static mut ADDRESSES: OnceLock<Addresses> = OnceLock::new();
 static mut O_WND_PROC: Option<WNDPROC> = None;
 
 type FnPresent = unsafe extern "system" fn(
@@ -112,7 +107,9 @@ fn hk_reset(
 #[allow(static_mut_refs)]
 fn hk_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
-        APP.get_mut().expect("EguiDx9 not initialized at hk_wnd_proc").wnd_proc(msg, wparam, lparam);
+        APP.get_mut()
+            .expect("EguiDx9 not initialized at hk_wnd_proc")
+            .wnd_proc(msg, wparam, lparam);
         CallWindowProcW(O_WND_PROC.unwrap(), hwnd, msg, wparam, lparam)
     }
 }

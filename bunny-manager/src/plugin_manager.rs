@@ -12,7 +12,7 @@ use abi_stable::{
 };
 use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::{
-    PluginContext, PluginInfo,
+    LogLevel, PluginContext, PluginInfo,
     bunny_ui::{
         self,
         input_state::{Input, PointerState},
@@ -43,12 +43,18 @@ pub struct PluginManager<'a> {
     dirs: PluginDirs,
     addresses: Addresses,
     fonts: Vec<String>,
+    log_level: LogLevel,
     input: Input,
     response_pointerstate: RArc<PointerState>,
 }
 
 impl<'a> PluginManager<'a> {
-    pub fn new(addresses: Addresses, fonts: Vec<String>, creation_context: &egui::Context) -> Self {
+    pub fn new(
+        addresses: Addresses,
+        fonts: Vec<String>,
+        log_level: LogLevel,
+        creation_context: &egui::Context,
+    ) -> Self {
         let dirs = PluginDirs::new();
         let plugins = find_plugins(&dirs).unwrap_or_else(|e| {
             error!("Error finding plugins: {e:#}");
@@ -61,6 +67,7 @@ impl<'a> PluginManager<'a> {
             dirs,
             addresses,
             fonts,
+            log_level,
             input: Default::default(),
             response_pointerstate: Default::default(),
         }
@@ -71,6 +78,7 @@ impl<'a> PluginManager<'a> {
             self.addresses.mhfo_info,
             self.dirs.configs_str.clone(),
             &self.fonts,
+            self.log_level,
         );
         for plugin in &mut self.plugins {
             plugin.load(context.clone());
@@ -85,6 +93,7 @@ impl<'a> PluginManager<'a> {
                 self.addresses.mhfo_info,
                 self.dirs.configs.to_string_lossy(),
                 &self.fonts,
+                self.log_level,
             );
             for mut plugin in new_plugins {
                 if !self.plugins.contains(&plugin) {
@@ -119,6 +128,7 @@ impl<'a> PluginManager<'a> {
                                 self.addresses.mhfo_info,
                                 self.dirs.configs_str.as_str(),
                                 &self.fonts,
+                                self.log_level,
                             ));
                         }
                     }

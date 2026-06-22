@@ -4,12 +4,14 @@ use std::{
     env::current_exe,
     ffi::c_void,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::OnceLock,
     thread::sleep,
     time::Duration,
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
+use bunny_plugin::LogLevel;
 use mimalloc::MiMalloc;
 use tracing::{error, info};
 use windows::Win32::{
@@ -21,7 +23,7 @@ use windows::Win32::{
     },
 };
 
-use crate::{address::find_addresses, egui_hook::ADDRESSES};
+use crate::address::{Addresses, find_addresses};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -31,6 +33,8 @@ pub const CONFIG_PATH: &str = "plugins/bunny_config/";
 pub const FONTS_PATH: &str = "plugins/bunny_fonts/";
 
 pub static EXE_PATH: OnceLock<PathBuf> = OnceLock::new();
+pub static LOG_LEVEL: OnceLock<LogLevel> = OnceLock::new();
+pub static ADDRESSES: OnceLock<Addresses> = OnceLock::new();
 
 mod address;
 mod config;
@@ -70,10 +74,40 @@ fn create_required_dirs(executable_path: impl AsRef<Path>) -> Result<()> {
 
 #[allow(static_mut_refs)]
 fn fallible() -> Result<()> {
+    let (log_level, log_level_error) = match std::env::var("CARDAMOM_LOG_LEVEL") {
+        Ok(level_str) => match LogLevel::from_str(&level_str) {
+            Ok(level) => (level, None),
+            Err(e) => (
+                LogLevel::default(),
+                Some(e.context(
+                    "Failed to parse CARDAMOM_LOG_LEVEL environment variable as LogLevel struct",
+                )),
+            ),
+        },
+        Err(e) => {
+            let err = match e {
+                std::env::VarError::NotPresent => {
+                    anyhow!("Environment variable CARDADMOM_LOG_LEVEL not found")
+                }
+                std::env::VarError::NotUnicode(_) => {
+                    anyhow!("Environment variable CARDAMOM_LOG_LEVEL is invalid Unicode")
+                }
+            };
+            (LogLevel::default(), Some(err))
+        }
+    };
     tracing_subscriber::fmt()
         .without_time()
         .with_ansi(false)
+        .with_max_level(log_level)
         .init();
+    if let Some(e) = log_level_error {
+        error!("{e:#}");
+    }
+    LOG_LEVEL
+        .set(log_level)
+        .expect("LOG_LEVEL set before startup");
+
     let addresses = find_addresses();
     info!(
         "Running {}, found main dll at {:#x}",
@@ -84,11 +118,10 @@ fn fallible() -> Result<()> {
             sleep(Duration::from_millis(100));
         }
     }
-    unsafe {
-        ADDRESSES
-            .set(addresses)
-            .expect("ADDRESSES set before startup")
-    };
+
+    ADDRESSES
+        .set(addresses)
+        .expect("ADDRESSES set before startup");
 
     let exe_path = current_exe()?;
     create_required_dirs(&exe_path)?;
