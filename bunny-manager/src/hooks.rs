@@ -9,16 +9,15 @@ fn hook_game_shutdown<'a>(addresses: Addresses) -> Result<ClosureHookPoint<'a>> 
     let on_call = |_| {
         if let Some(app) = unsafe { APP.get_mut() } {
             let state = app.state_mut();
-            info!("Saving configs");
-            state.plugin_manager.save_all_blocking();
             if let Some(config_path) = &state.config_path
                 && let Err(e) = state.config.save(config_path)
             {
                 error!("Config save error: {e:#}");
             }
 
-            info!("Running plugin unload funcs");
-            state.plugin_manager.unload_all();
+            info!("Unloading plugins");
+            state.plugin_manager.unload();
+            info!("Done unloading");
         }
     };
     let hook = unsafe {

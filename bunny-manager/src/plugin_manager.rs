@@ -3,8 +3,7 @@ use std::{
     ffi::{OsStr, c_void},
     mem::transmute,
     path::PathBuf,
-    thread::{JoinHandle, sleep},
-    time::{Duration, Instant},
+    thread::JoinHandle,
 };
 
 use abi_stable::{
@@ -36,8 +35,6 @@ use windows::{
 use crate::{
     CONFIG_PATH, EXE_PATH, PLUGINS_PATH, address::Addresses, config::Config, ui::stats::PluginStats,
 };
-
-const SAVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub struct PluginManager<'a> {
@@ -111,12 +108,11 @@ impl<'a> PluginManager<'a> {
     pub fn menu_ui(&mut self, ui: &mut Ui, config: &Config) {
         for plugin in &mut self.plugins {
             ui.horizontal(|ui| {
-                let mut temp = plugin.loaded;
+                let mut temp = plugin.loaded();
                 ui.scope(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     if ui.add(Checkbox::without_text(&mut temp)).clicked() {
-                        if plugin.loaded {
-                            plugin.save_blocking();
+                        if plugin.loaded() {
                             plugin.unload();
                         } else {
                             plugin.load(PluginContext::new(
@@ -172,25 +168,12 @@ impl<'a> PluginManager<'a> {
         }
     }
 
-    pub fn save_all(&self) -> Vec<JoinHandle<()>> {
+    pub fn save(&self) -> Vec<JoinHandle<()>> {
         self.plugins.iter().flat_map(|p| p.save()).collect()
     }
 
-    pub fn save_all_blocking(&self) {
-        let handles = self.save_all();
-        let save_start = Instant::now();
-        while save_start.elapsed() < SAVE_TIMEOUT {
-            if handles.iter().all(|h| h.is_finished()) {
-                break;
-            }
-            sleep(Duration::from_millis(100));
-        }
-    }
-
-    pub fn unload_all(&mut self) {
-        for plugin in &mut self.plugins {
-            plugin.unload();
-        }
+    pub fn unload(&mut self) -> Vec<JoinHandle<()>> {
+        self.plugins.iter_mut().flat_map(|p| p.unload()).collect()
     }
 }
 
@@ -201,12 +184,12 @@ type FnPluginUnload = unsafe extern "C" fn();
 type FnPluginSave = unsafe extern "C" fn();
 
 #[derive(Clone, Copy)]
-pub struct PluginFuncs {
-    pub init: FnPluginInit,
-    pub menu_ui: FnPluginMenu,
-    pub free_ui: FnPluginUi,
-    pub unload: FnPluginUnload,
-    pub save: FnPluginSave,
+struct PluginFuncs {
+    init: FnPluginInit,
+    menu_ui: FnPluginMenu,
+    free_ui: FnPluginUi,
+    unload: FnPluginUnload,
+    save: FnPluginSave,
 }
 
 impl PluginFuncs {
@@ -240,14 +223,15 @@ impl PluginFuncs {
     }
 }
 
+// TODO keep track of save/unload threads finishing so no load/save/unload operation is started while a thread is running
+
 #[derive(Clone)]
-pub struct BunnyPlugin<'a> {
-    pub file_name: String,
-    pub loaded: bool,
-    pub info: Option<PluginInfo>,
-    pub stats: PluginStats,
+struct BunnyPlugin<'a> {
+    file_name: String,
+    info: Option<PluginInfo>,
+    stats: PluginStats,
     funcs: Option<PluginFuncs>,
-    handle: Option<usize>,
+    module_handle: Option<usize>,
     plugin_path: PathBuf,
     paint_list: RArc<RRwLock<PaintList<'a>>>,
     menu_responses: Option<RArc<RHashMap<Id, Response, RandomState>>>,
@@ -258,11 +242,10 @@ impl BunnyPlugin<'_> {
     fn new(file_name: String, plugin_path: PathBuf) -> Self {
         Self {
             file_name,
-            loaded: false,
             info: None,
             stats: PluginStats::default(),
             funcs: None,
-            handle: None,
+            module_handle: None,
             plugin_path,
             paint_list: RArc::new(RRwLock::new(PaintList::new())),
             menu_responses: None,
@@ -270,11 +253,10 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    pub fn load(&mut self, plugin_context: PluginContext) {
+    fn load(&mut self, plugin_context: PluginContext) {
         match unsafe { LoadLibraryW(&HSTRING::from(self.plugin_path.as_path())) } {
             Ok(module) => {
-                self.handle = Some(module.0 as usize);
-                self.loaded = true;
+                self.module_handle = Some(module.0 as usize);
                 info!("{} loaded", &self.file_name);
                 match PluginFuncs::new(module) {
                     Ok(funcs) => match get_plugin_api_version(module) {
@@ -303,12 +285,11 @@ impl BunnyPlugin<'_> {
             }
             Err(e) => {
                 error!("Error loading {}: {e:#}", &self.file_name);
-                self.loaded = false;
             }
         }
     }
 
-    pub fn menu_ui(
+    fn menu_ui(
         &mut self,
         ui: &mut Ui,
         style: &bunny_ui::style::Style,
@@ -352,7 +333,7 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    pub fn free_ui(
+    fn free_ui(
         &mut self,
         ui: &mut Ui,
         style: &bunny_ui::style::Style,
@@ -396,63 +377,68 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    pub fn save(&self) -> Option<JoinHandle<()>> {
-        if let Some(funcs) = self.funcs {
-            let save = funcs.save;
-            Some(std::thread::spawn(move || unsafe { save() }))
-        } else {
-            None
-        }
-    }
-
-    pub fn save_blocking(&self) {
-        if let Some(handle) = self.save() {
-            let save_start = Instant::now();
-            while save_start.elapsed() < SAVE_TIMEOUT {
-                if handle.is_finished() {
-                    break;
-                }
-                sleep(Duration::from_millis(100));
-            }
-        }
-    }
-
-    pub fn process_paint_list(&mut self, ui: &mut Ui) {
+    fn process_paint_list(&mut self, ui: &mut Ui) {
         if self.enabled() {
             self.paint_list.write().ui(ui);
         }
     }
 
-    pub fn unload(&mut self) {
-        if let Some(funcs) = self.funcs
-            && let Some(handle) = self.handle
+    fn save(&self) -> Option<JoinHandle<()>> {
+        self.funcs.map(|f| {
+            let save = f.save;
+            std::thread::spawn(move || unsafe { save() })
+        })
+    }
+
+    fn unload(&mut self) -> Option<JoinHandle<()>> {
+        let thread_handle = self
+            .funcs
+            .zip(self.module_handle)
+            .map(|(funcs, module_handle)| {
+                let file_name = self.file_name.clone();
+                let save = funcs.save;
+                let unload = funcs.unload;
+                std::thread::spawn(move || unsafe {
+                    let module = HMODULE(module_handle as *mut c_void);
+                    save();
+                    unload();
+                    if let Err(e) = FreeLibrary(module) {
+                        error!("Error unloading {}: {e:#}", file_name);
+                    } else {
+                        info!("Unloaded {}", file_name);
+                    }
+                })
+            });
+
+        if thread_handle.is_none()
+            && let Some(module_handle) = self.module_handle
         {
-            unsafe { (funcs.unload)() };
-            if let Some(handle) = self.save()
-                && handle.join().is_err()
-            {
-                error!("Error saving plugin {}", self.file_name);
-            }
-            let module = HMODULE(handle as *mut c_void);
+            let module = HMODULE(module_handle as *mut c_void);
             if let Err(e) = unsafe { FreeLibrary(module) } {
-                error!("Error unloading plugin {}: {e:#}", self.file_name);
+                error!("Error unloading {}: {e:#}", self.file_name);
             } else {
                 info!("Unloaded {}", self.file_name);
             }
         }
+
         self.funcs = None;
-        self.handle = None;
+        self.module_handle = None;
         self.menu_responses = None;
         self.free_responses = None;
         self.paint_list.write().clear();
-        self.loaded = false;
+
+        thread_handle
     }
 
-    pub fn enabled(&self) -> bool {
+    fn loaded(&self) -> bool {
+        self.module_handle.is_some()
+    }
+
+    fn enabled(&self) -> bool {
         self.funcs.is_some()
     }
 
-    pub fn name(&self) -> &str {
+    fn name(&self) -> &str {
         if let Some(plugin_info) = &self.info {
             plugin_info.name()
         } else {
@@ -460,7 +446,7 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    pub fn name_version<'a>(&'a self) -> Cow<'a, str> {
+    fn name_version<'a>(&'a self) -> Cow<'a, str> {
         if let Some(plugin_info) = &self.info {
             format!("{} - {}", plugin_info.name(), plugin_info.version()).into()
         } else {
@@ -476,14 +462,14 @@ impl PartialEq for BunnyPlugin<'_> {
 }
 
 #[derive(Debug)]
-pub struct PluginDirs {
-    pub plugins: PathBuf,
-    pub configs: PathBuf,
-    pub configs_str: RString,
+struct PluginDirs {
+    plugins: PathBuf,
+    configs: PathBuf,
+    configs_str: RString,
 }
 
 impl PluginDirs {
-    pub fn new() -> Self {
+    fn new() -> Self {
         let mut base = EXE_PATH
             .get()
             .cloned()

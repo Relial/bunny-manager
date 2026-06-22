@@ -106,7 +106,7 @@ impl UiManager<'_> {
                     error!("Config save error: {e:#}");
                 }
             });
-            self.plugin_manager.save_all();
+            self.plugin_manager.save();
             self.last_autosave = Instant::now();
         }
 
