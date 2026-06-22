@@ -444,7 +444,7 @@ impl BunnyPlugin<'_> {
         self.handle = None;
         self.menu_responses = None;
         self.free_responses = None;
-        self.paint_list = RArc::new(RRwLock::new(PaintList::new()));
+        self.paint_list.write().clear();
         self.loaded = false;
     }
 
@@ -548,11 +548,7 @@ fn get_plugin_api_version(module: HMODULE) -> Result<u32> {
 impl std::fmt::Debug for BunnyPlugin<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BunnyPlugin")
-            .field("name", &self.file_name)
-            .field("loaded", &self.loaded)
-            .field("stats", &self.stats)
-            .field("handle", &self.handle)
-            .field("plugin_path", &self.plugin_path)
+            .field("file_name", &self.file_name)
             .finish_non_exhaustive()
     }
 }
