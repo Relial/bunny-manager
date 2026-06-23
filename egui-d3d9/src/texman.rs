@@ -5,7 +5,7 @@ use windows::Win32::{
     Foundation::{POINT, RECT},
     Graphics::Direct3D9::{
         IDirect3DDevice9, IDirect3DTexture9, D3DFMT_A8R8G8B8, D3DLOCKED_RECT, D3DLOCK_DISCARD,
-        D3DLOCK_READONLY, D3DPOOL_DEFAULT, D3DPOOL_SYSTEMMEM, D3DUSAGE_DYNAMIC,
+        D3DPOOL_DEFAULT, D3DPOOL_SYSTEMMEM, D3DUSAGE_DYNAMIC,
     },
 };
 
@@ -265,7 +265,7 @@ fn create_temporary_texture(
                 0,
                 &mut locked_rect,
                 std::ptr::null_mut(),
-                D3DLOCK_DISCARD as u32 | D3DLOCK_READONLY as u32
+                D3DLOCK_DISCARD as u32
             ),
             "unable to lock temporary texture"
         );
