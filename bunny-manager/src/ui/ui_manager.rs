@@ -205,6 +205,7 @@ fn paint_cursor(pos: Pos2, ui: &Ui) {
 }
 
 fn add_fonts(path: impl AsRef<Path>, ctx: &egui::Context) -> Result<Vec<String>> {
+    info!("Adding fonts");
     let mut fonts = Vec::new();
     let path = path.as_ref();
     for entry in path
@@ -229,6 +230,7 @@ fn add_fonts(path: impl AsRef<Path>, ctx: &egui::Context) -> Result<Vec<String>>
                                         priority: FontPriority::Highest,
                                     }],
                                 ));
+                                info!("Added {}", &n);
                                 fonts.push(n.into());
                             } else {
                                 error!(
@@ -251,5 +253,6 @@ fn add_fonts(path: impl AsRef<Path>, ctx: &egui::Context) -> Result<Vec<String>>
             }
         }
     }
+    info!("Done adding fonts");
     Ok(fonts)
 }
