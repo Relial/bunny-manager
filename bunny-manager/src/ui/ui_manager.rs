@@ -13,12 +13,12 @@ use egui::{
     load::TexturePoll,
     paint_texture_at,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 pub static INIT: AtomicBool = AtomicBool::new(false);
 
 use crate::{
-    EXE_PATH, FONTS_PATH, LOG_LEVEL,
+    FONTS_DIR_NAME, LOG_LEVEL, MODULE_DIR_PATH,
     address::Addresses,
     config::{Config, get_config_path},
     plugin_manager::PluginManager,
@@ -31,7 +31,7 @@ pub struct UiManager<'a> {
     main_window: MainWindow,
     paint_cursor: bool,
     pub config: Config,
-    pub config_path: Option<PathBuf>,
+    pub config_path: PathBuf,
     fonts_path: PathBuf,
     last_autosave: Instant,
     pub plugin_manager: PluginManager<'a>,
@@ -40,36 +40,28 @@ pub struct UiManager<'a> {
 impl UiManager<'_> {
     pub fn new(creation_context: &egui::Context, addresses: Addresses) -> Self {
         let config_path = get_config_path();
-        let config = match &config_path {
-            Ok(path) => match Config::load(path) {
-                Ok(config) => config,
-                Err(e) => {
-                    error!(
-                        "Failed to load Bunny Manager config at {}: {e:#}",
-                        path.display()
-                    );
-                    info!("Using default config");
-                    let config = Config::default();
-                    if let Err(e) = config.save(path) {
-                        error!("Failed to save new config: {e:#}");
-                    } else {
-                        info!("Succesfully created new config");
-                    }
-                    config
-                }
-            },
+        let config = match Config::load(&config_path) {
+            Ok(config) => config,
             Err(e) => {
-                warn!("Failed to get Bunny Manager config path: {e:#}. Using default config.");
-                Config::default()
+                error!(
+                    "Failed to load Bunny Manager config at {}: {e:#}",
+                    config_path.display()
+                );
+                info!("Using default config");
+                let config = Config::default();
+                if let Err(e) = config.save(&config_path) {
+                    error!("Failed to save new config: {e:#}");
+                } else {
+                    info!("Succesfully created new config");
+                }
+                config
             }
         };
 
-        let mut fonts_path = EXE_PATH
+        let fonts_path = MODULE_DIR_PATH
             .get()
-            .cloned()
-            .expect("EXE_PATH must be initialized before UI manager init");
-        fonts_path.pop();
-        fonts_path.push(FONTS_PATH);
+            .expect("EXE_PATH must be initialized before UI manager init")
+            .join(FONTS_DIR_NAME);
 
         let fonts = ui_init(creation_context, &fonts_path);
         let log_level = LOG_LEVEL
@@ -85,7 +77,7 @@ impl UiManager<'_> {
             main_window: MainWindow::new(&config),
             paint_cursor: false,
             config,
-            config_path: config_path.ok(),
+            config_path,
             fonts_path,
             last_autosave: Instant::now(),
             plugin_manager,
@@ -103,9 +95,7 @@ impl UiManager<'_> {
             let config_path = self.config_path.clone();
             let config = self.config;
             std::thread::spawn(move || {
-                if let Some(path) = &config_path
-                    && let Err(e) = config.save(path)
-                {
+                if let Err(e) = config.save(&config_path) {
                     error!("Config save error: {e:#}");
                 }
             });

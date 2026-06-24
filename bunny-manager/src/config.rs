@@ -1,13 +1,10 @@
-use std::{
-    env::current_exe,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use egui::{Key, KeyboardShortcut, Modifiers};
 use serde::{Deserialize, Serialize};
 
-use crate::CONFIG_PATH;
+use crate::{CONFIG_DIR_NAME, MODULE_DIR_PATH};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -44,10 +41,11 @@ impl Config {
     }
 }
 
-pub fn get_config_path() -> Result<PathBuf> {
-    let mut path = current_exe()?;
-    path.pop();
-    path.push(CONFIG_PATH);
-    path.push("bunny_manager.toml");
-    Ok(path)
+pub fn get_config_path() -> PathBuf {
+    let base = MODULE_DIR_PATH
+        .get()
+        .expect("MODULE_DIR_PATH not initialized before config init");
+    let mut config_path = base.join(CONFIG_DIR_NAME);
+    config_path.push("bunny_manager.toml");
+    config_path
 }

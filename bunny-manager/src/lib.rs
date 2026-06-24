@@ -1,8 +1,8 @@
 #![feature(once_cell_get_mut)]
 
 use std::{
-    env::current_exe,
-    ffi::c_void,
+    ffi::{OsString, c_void},
+    os::windows::ffi::OsStringExt,
     path::{Path, PathBuf},
     str::FromStr,
     sync::OnceLock,
@@ -13,11 +13,11 @@ use std::{
 use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::LogLevel;
 use mimalloc::MiMalloc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use windows::Win32::{
     Foundation::{CloseHandle, HINSTANCE, HMODULE},
     System::{
-        LibraryLoader::{DisableThreadLibraryCalls, FreeLibraryAndExitThread},
+        LibraryLoader::{DisableThreadLibraryCalls, FreeLibraryAndExitThread, GetModuleFileNameW},
         SystemServices::DLL_PROCESS_ATTACH,
         Threading::{CreateThread, THREAD_CREATION_FLAGS},
     },
@@ -28,11 +28,11 @@ use crate::address::{Addresses, find_addresses};
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-pub const PLUGINS_PATH: &str = "plugins/bunny_plugins/";
-pub const CONFIG_PATH: &str = "plugins/bunny_config/";
-pub const FONTS_PATH: &str = "plugins/bunny_fonts/";
+pub const PLUGINS_DIR_NAME: &str = "bunny_plugins";
+pub const CONFIG_DIR_NAME: &str = "bunny_config";
+pub const FONTS_DIR_NAME: &str = "bunny_fonts";
 
-pub static EXE_PATH: OnceLock<PathBuf> = OnceLock::new();
+pub static MODULE_DIR_PATH: OnceLock<PathBuf> = OnceLock::new();
 pub static LOG_LEVEL: OnceLock<LogLevel> = OnceLock::new();
 pub static ADDRESSES: OnceLock<Addresses> = OnceLock::new();
 
@@ -43,12 +43,26 @@ mod hooks;
 mod plugin_manager;
 mod ui;
 
-fn create_required_dirs(executable_path: impl AsRef<Path>) -> Result<()> {
-    let mut base = executable_path.as_ref().to_path_buf();
-    base.pop();
-    let plugins = base.join(PLUGINS_PATH);
-    let config = base.join(CONFIG_PATH);
-    let fonts = base.join(FONTS_PATH);
+fn get_own_dir(module: HMODULE) -> Result<PathBuf> {
+    let mut buf = [0; 1024];
+    let return_len = unsafe { GetModuleFileNameW(Some(module), &mut buf) };
+    let err = std::io::Error::last_os_error();
+    if return_len == 0 {
+        Err(anyhow!("Failed to get own module path: {err:#}"))
+    } else {
+        let s = OsString::from_wide(&buf[0..return_len as usize]);
+        let mut p = PathBuf::from(s);
+        p.pop();
+        debug!("Module directory: {}", p.display());
+        Ok(p)
+    }
+}
+
+fn create_required_dirs(module_dir: impl AsRef<Path>) -> Result<()> {
+    let base = module_dir.as_ref();
+    let plugins = base.join(PLUGINS_DIR_NAME);
+    let config = base.join(CONFIG_DIR_NAME);
+    let fonts = base.join(FONTS_DIR_NAME);
     if !plugins.exists() {
         std::fs::create_dir(&plugins).with_context(|| {
             format!(
@@ -73,7 +87,7 @@ fn create_required_dirs(executable_path: impl AsRef<Path>) -> Result<()> {
 }
 
 #[allow(static_mut_refs)]
-fn fallible() -> Result<()> {
+fn fallible(module: HMODULE) -> Result<()> {
     let (log_level, log_level_error) = match std::env::var("CARDAMOM_LOG_LEVEL") {
         Ok(level_str) => match LogLevel::from_str(&level_str) {
             Ok(level) => (level, None),
@@ -123,9 +137,11 @@ fn fallible() -> Result<()> {
         .set(addresses)
         .expect("ADDRESSES set before startup");
 
-    let exe_path = current_exe()?;
-    create_required_dirs(&exe_path)?;
-    EXE_PATH.set(exe_path).expect("EXE_PATH set before startup");
+    let module_dir_path = get_own_dir(module)?;
+    create_required_dirs(&module_dir_path)?;
+    MODULE_DIR_PATH
+        .set(module_dir_path)
+        .expect("EXE_PATH set before startup");
 
     info!("Hooking D3D9");
     egui_hook::hook(addresses.hwnd())?;
@@ -142,11 +158,12 @@ fn fallible() -> Result<()> {
 }
 
 extern "system" fn main(lp_parameter: *mut c_void) -> u32 {
-    if let Err(e) = fallible() {
+    let module = HMODULE(lp_parameter);
+    if let Err(e) = fallible(module) {
         error!("{e:#}");
     }
     unsafe {
-        FreeLibraryAndExitThread(HMODULE(lp_parameter), 0);
+        FreeLibraryAndExitThread(module, 0);
     }
 }
 

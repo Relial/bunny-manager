@@ -8,6 +8,12 @@ Extract in the MHFZ game folder. dsound.dll, d3d8.dll, and a plugins folder shou
 
 You should see a command prompt window when first launching the game.
 
+## Linux
+
+Run with WINEDLLOVERRIDES="dinput8,d3d8=n,b"
+
+If running from Steam, use WINEDLLOVERRIDES="dinput8,d3d8=n,b" %command%
+
 ## Known issues
 
 Rivatuner Statistics Server can cause this manager's UI to not appear, despite no errors appearing in the console. Starting Rivatuner after the manager has fully loaded can help.

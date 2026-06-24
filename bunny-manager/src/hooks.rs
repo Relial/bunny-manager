@@ -9,9 +9,7 @@ fn hook_game_shutdown<'a>(addresses: Addresses) -> Result<ClosureHookPoint<'a>> 
     let on_call = |_| {
         if let Some(app) = unsafe { APP.get_mut() } {
             let state = app.state_mut();
-            if let Some(config_path) = &state.config_path
-                && let Err(e) = state.config.save(config_path)
-            {
+            if let Err(e) = state.config.save(&state.config_path) {
                 error!("Config save error: {e:#}");
             }
 

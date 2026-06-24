@@ -33,7 +33,8 @@ use windows::{
 };
 
 use crate::{
-    CONFIG_PATH, EXE_PATH, PLUGINS_PATH, address::Addresses, config::Config, ui::stats::PluginStats,
+    CONFIG_DIR_NAME, MODULE_DIR_PATH, PLUGINS_DIR_NAME, address::Addresses, config::Config,
+    ui::stats::PluginStats,
 };
 
 #[derive(Debug)]
@@ -480,13 +481,11 @@ struct PluginDirs {
 
 impl PluginDirs {
     fn new() -> Self {
-        let mut base = EXE_PATH
+        let base = MODULE_DIR_PATH
             .get()
-            .cloned()
-            .expect("EXE_PATH not initialized before plugin manager init");
-        base.pop();
-        let plugins_path = base.join(PLUGINS_PATH);
-        let config_path = base.join(CONFIG_PATH);
+            .expect("MODULE_DIR_PATH not initialized before plugin manager init");
+        let plugins_path = base.join(PLUGINS_DIR_NAME);
+        let config_path = base.join(CONFIG_DIR_NAME);
         let configs_str = config_path.to_string_lossy().into();
         Self {
             plugins: plugins_path,
