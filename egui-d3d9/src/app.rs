@@ -13,10 +13,13 @@ use crate::{
     texman::TextureManager,
 };
 
-type UiFn<T> = Box<dyn FnMut(&mut Ui, &mut T) + 'static>;
+pub trait App {
+    fn ui(&mut self, ui: &mut Ui);
+}
 
-pub struct EguiDx9<T: std::fmt::Debug> {
-    ui_fn: UiFn<T>,
+// type UiFn<T> = Box<dyn FnMut(&mut Ui, &mut T) + 'static>;
+
+pub struct EguiDx9<T: std::fmt::Debug + App> {
     ui_state: T,
     hwnd: HWND,
     reactive: bool,
@@ -32,7 +35,7 @@ pub struct EguiDx9<T: std::fmt::Debug> {
     skip_frame: u8,
 }
 
-impl<T: std::fmt::Debug> EguiDx9<T> {
+impl<T: std::fmt::Debug + App> EguiDx9<T> {
     ///
     /// initialize the backend.
     ///
@@ -45,7 +48,6 @@ impl<T: std::fmt::Debug> EguiDx9<T> {
     pub fn init(
         dev: &IDirect3DDevice9,
         hwnd: HWND,
-        ui_fn: impl FnMut(&mut Ui, &mut T) + 'static,
         ui_create: impl FnOnce(&Context) -> T,
         reactive: bool,
     ) -> Self {
@@ -57,7 +59,6 @@ impl<T: std::fmt::Debug> EguiDx9<T> {
         let ui_state = ui_create(&ctx);
 
         Self {
-            ui_fn: Box::new(ui_fn),
             ui_state,
             hwnd,
             reactive,
@@ -103,7 +104,7 @@ impl<T: std::fmt::Debug> EguiDx9<T> {
 
         let output = self.ctx.run_ui(self.input_man.collect_input(), |ui| {
             // safe. present will never run in parallel.
-            (self.ui_fn)(ui, &mut self.ui_state)
+            self.ui_state.ui(ui);
         });
 
         if !output.textures_delta.is_empty() {
@@ -227,7 +228,7 @@ impl<T: std::fmt::Debug> EguiDx9<T> {
     }
 }
 
-impl<T: std::fmt::Debug> EguiDx9<T> {
+impl<T: std::fmt::Debug + App> EguiDx9<T> {
     fn get_screen_size(&self) -> (f32, f32) {
         let mut rect = RECT::default();
         unsafe {
@@ -255,7 +256,7 @@ impl<T: std::fmt::Debug> EguiDx9<T> {
     }
 }
 
-impl<T: std::fmt::Debug> EguiDx9<T> {
+impl<T: std::fmt::Debug + App> EguiDx9<T> {
     pub fn state(&self) -> &T {
         &self.ui_state
     }
@@ -265,14 +266,14 @@ impl<T: std::fmt::Debug> EguiDx9<T> {
     }
 }
 
-impl<T: std::fmt::Debug> Drop for EguiDx9<T> {
+impl<T: std::fmt::Debug + App> Drop for EguiDx9<T> {
     fn drop(&mut self) {
         self.buffers.delete_buffers();
         self.tex_man.deallocate_textures();
     }
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for EguiDx9<T> {
+impl<T: std::fmt::Debug + App> std::fmt::Debug for EguiDx9<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EguiDx9")
             .field("ui_state", &self.ui_state)

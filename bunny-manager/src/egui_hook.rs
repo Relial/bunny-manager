@@ -22,7 +22,7 @@ use windows::{
 
 use crate::{
     ADDRESSES,
-    ui::ui_manager::{INIT, UiManager, ui},
+    ui::ui_manager::{INIT, UiManager},
 };
 
 pub static mut APP: OnceCell<EguiDx9<UiManager>> = OnceCell::new();
@@ -59,7 +59,6 @@ fn hk_present(
             let egui = EguiDx9::init(
                 &device,
                 hwnd,
-                ui,
                 |creation_context| UiManager::new(creation_context, *addresses),
                 false,
             );

@@ -37,6 +37,60 @@ pub struct UiManager<'a> {
     pub plugin_manager: PluginManager<'a>,
 }
 
+impl egui_d3d9::App for UiManager<'_> {
+    fn ui(&mut self, ui: &mut Ui) {
+        if !INIT.load(Ordering::Relaxed) {
+            // This runs on startup and at D3D9 Reset
+            ui_init(ui.ctx(), &self.fonts_path);
+            INIT.store(true, Ordering::Relaxed);
+        }
+
+        self.paint_cursor = false;
+
+        self.plugin_manager.update_input(ui);
+
+        if self.config.config_autosave_interval_seconds > 0
+            && self.last_autosave.elapsed()
+                > Duration::from_secs(self.config.config_autosave_interval_seconds)
+        {
+            debug!("Autosaving");
+            let config_path = self.config_path.clone();
+            let config = self.config;
+            std::thread::spawn(move || {
+                if let Err(e) = config.save(&config_path) {
+                    error!("Config save error: {e:#}");
+                }
+            });
+            self.plugin_manager.save();
+            self.last_autosave = Instant::now();
+        }
+
+        if self.main_window.display {
+            self.paint_cursor = true;
+            self.main_window.ui(
+                ui,
+                &mut self.stats,
+                &mut self.plugin_manager,
+                &mut self.config,
+            );
+        }
+
+        self.plugin_manager.free_ui(ui, &self.config);
+
+        ui.input_mut(|i| {
+            if i.consume_shortcut(&self.config.toggle_manager_shortcut) {
+                self.main_window.display = !self.main_window.display;
+            }
+        });
+
+        if self.paint_cursor
+            && let Some(pointer_pos) = ui.pointer_latest_pos()
+        {
+            paint_cursor(pointer_pos, ui);
+        }
+    }
+}
+
 impl UiManager<'_> {
     pub fn new(creation_context: &egui::Context, addresses: Addresses) -> Self {
         let config_path = get_config_path();
@@ -84,50 +138,6 @@ impl UiManager<'_> {
         }
     }
 
-    fn ui(&mut self, ui: &mut Ui) {
-        self.plugin_manager.update_input(ui);
-
-        if self.config.config_autosave_interval_seconds > 0
-            && self.last_autosave.elapsed()
-                > Duration::from_secs(self.config.config_autosave_interval_seconds)
-        {
-            debug!("Autosaving");
-            let config_path = self.config_path.clone();
-            let config = self.config;
-            std::thread::spawn(move || {
-                if let Err(e) = config.save(&config_path) {
-                    error!("Config save error: {e:#}");
-                }
-            });
-            self.plugin_manager.save();
-            self.last_autosave = Instant::now();
-        }
-
-        if self.main_window.display {
-            self.paint_cursor = true;
-            self.main_window.ui(
-                ui,
-                &mut self.stats,
-                &mut self.plugin_manager,
-                &mut self.config,
-            );
-        }
-
-        self.plugin_manager.free_ui(ui, &self.config);
-
-        ui.input_mut(|i| {
-            if i.consume_shortcut(&self.config.toggle_manager_shortcut) {
-                self.main_window.display = !self.main_window.display;
-            }
-        });
-
-        if self.paint_cursor
-            && let Some(pointer_pos) = ui.pointer_latest_pos()
-        {
-            paint_cursor(pointer_pos, ui);
-        }
-    }
-
     #[inline(always)]
     pub fn collect_stats(&self) -> bool {
         self.config.collect_stats
@@ -159,17 +169,6 @@ fn ui_init(ctx: &egui::Context, fonts_path: impl AsRef<Path>) -> Vec<String> {
         error!("Error adding fonts: {e:#}");
         Vec::new()
     })
-}
-
-pub fn ui(ui: &mut Ui, manager: &mut UiManager) {
-    if !INIT.load(Ordering::Relaxed) {
-        // This runs on startup and at D3D9 Reset
-        ui_init(ui.ctx(), &manager.fonts_path);
-        INIT.store(true, Ordering::Relaxed);
-    }
-    manager.paint_cursor = false;
-
-    manager.ui(ui);
 }
 
 fn paint_cursor(pos: Pos2, ui: &Ui) {
