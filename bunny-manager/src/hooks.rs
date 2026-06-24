@@ -4,10 +4,9 @@ use tracing::{error, info};
 
 use crate::{address::Addresses, egui_hook::APP};
 
-#[allow(static_mut_refs)]
 fn hook_game_shutdown<'a>(addresses: Addresses) -> Result<ClosureHookPoint<'a>> {
     let on_call = |_| {
-        if let Some(app) = unsafe { APP.get_mut() } {
+        if let Some(mut app) = APP.get().map(|l| l.lock().unwrap()) {
             let state = app.state_mut();
             if let Err(e) = state.config.save(&state.config_path) {
                 error!("Config save error: {e:#}");

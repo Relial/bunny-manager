@@ -1,4 +1,7 @@
-use std::{cell::OnceCell, mem::transmute, sync::atomic::Ordering};
+use std::{
+    mem::transmute,
+    sync::{Mutex, OnceLock, atomic::Ordering},
+};
 
 use anyhow::{Result, anyhow};
 use egui_d3d9::EguiDx9;
@@ -25,7 +28,7 @@ use crate::{
     ui::ui_manager::{INIT, UiManager},
 };
 
-pub static mut APP: OnceCell<EguiDx9<UiManager>> = OnceCell::new();
+pub static APP: OnceLock<Mutex<EguiDx9<UiManager>>> = OnceLock::new();
 static mut O_WND_PROC: Option<WNDPROC> = None;
 
 type FnPresent = unsafe extern "system" fn(
@@ -41,7 +44,6 @@ static_detour! {
     static ResetHook: unsafe extern "system" fn(IDirect3DDevice9, *const D3DPRESENT_PARAMETERS) -> HRESULT;
 }
 
-#[allow(static_mut_refs)]
 fn hk_present(
     device: IDirect3DDevice9,
     source_rect: *const RECT,
@@ -50,28 +52,31 @@ fn hk_present(
     dirty_region: *const RGNDATA,
 ) -> HRESULT {
     unsafe {
-        let app = APP.get_mut_or_init(|| {
-            debug!("Initializing EguiDx9");
-            let addresses = ADDRESSES
-                .get()
-                .expect("Addresses must be initialized before D3D9 hooks.");
-            let hwnd = addresses.hwnd();
-            let egui = EguiDx9::init(
-                &device,
-                hwnd,
-                |creation_context| UiManager::new(creation_context, *addresses),
-                false,
-            );
-            debug!("EguiDx9 initialized. Calling SetWindowLongPtrA");
-            let o_wnd_proc: WNDPROC = transmute(SetWindowLongPtrA(
-                hwnd,
-                GWLP_WNDPROC,
-                hk_wnd_proc as *const () as _,
-            ));
-            O_WND_PROC = Some(o_wnd_proc);
-            debug!("All init done");
-            egui
-        });
+        let mut app = APP
+            .get_or_init(|| {
+                debug!("Initializing EguiDx9");
+                let addresses = ADDRESSES
+                    .get()
+                    .expect("Addresses must be initialized before D3D9 hooks.");
+                let hwnd = addresses.hwnd();
+                let egui = EguiDx9::init(
+                    &device,
+                    hwnd,
+                    |creation_context| UiManager::new(creation_context, *addresses),
+                    false,
+                );
+                debug!("EguiDx9 initialized. Calling SetWindowLongPtrA");
+                let o_wnd_proc: WNDPROC = transmute(SetWindowLongPtrA(
+                    hwnd,
+                    GWLP_WNDPROC,
+                    hk_wnd_proc as *const () as _,
+                ));
+                O_WND_PROC = Some(o_wnd_proc);
+                debug!("All init done");
+                Mutex::new(egui)
+            })
+            .lock()
+            .unwrap();
         let collect_stats = app.state().collect_stats();
         if collect_stats {
             app.state_mut().stats.frame_start();
@@ -89,25 +94,29 @@ fn hk_present(
     }
 }
 
-#[allow(static_mut_refs)]
 fn hk_reset(
     device: IDirect3DDevice9,
     presentation_parameters: *const D3DPRESENT_PARAMETERS,
 ) -> HRESULT {
     unsafe {
         debug!("hk_reset called");
-        let app = APP.get_mut().expect("EguiDx9 not initialized at hk_reset");
+        let mut app = APP
+            .get()
+            .expect("EguiDx9 not initialized at hk_reset")
+            .lock()
+            .unwrap();
         app.pre_reset();
         INIT.store(false, Ordering::Relaxed);
         ResetHook.call(device, presentation_parameters)
     }
 }
 
-#[allow(static_mut_refs)]
 fn hk_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
-        APP.get_mut()
+        APP.get()
             .expect("EguiDx9 not initialized at hk_wnd_proc")
+            .lock()
+            .unwrap()
             .wnd_proc(msg, wparam, lparam);
         CallWindowProcW(O_WND_PROC.unwrap(), hwnd, msg, wparam, lparam)
     }

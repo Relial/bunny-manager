@@ -1,5 +1,3 @@
-#![feature(once_cell_get_mut)]
-
 use std::{
     ffi::{OsString, c_void},
     os::windows::ffi::OsStringExt,
@@ -86,7 +84,6 @@ fn create_required_dirs(module_dir: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
-#[allow(static_mut_refs)]
 fn fallible(module: HMODULE) -> Result<()> {
     let (log_level, log_level_error) = match std::env::var("CARDAMOM_LOG_LEVEL") {
         Ok(level_str) => match LogLevel::from_str(&level_str) {
