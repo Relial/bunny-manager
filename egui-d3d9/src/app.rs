@@ -17,9 +17,7 @@ pub trait App {
     fn ui(&mut self, ui: &mut Ui);
 }
 
-// type UiFn<T> = Box<dyn FnMut(&mut Ui, &mut T) + 'static>;
-
-pub struct EguiDx9<T: std::fmt::Debug + App> {
+pub struct EguiDx9<T: App> {
     ui_state: T,
     hwnd: HWND,
     reactive: bool,
@@ -35,7 +33,7 @@ pub struct EguiDx9<T: std::fmt::Debug + App> {
     skip_frame: u8,
 }
 
-impl<T: std::fmt::Debug + App> EguiDx9<T> {
+impl<T: App> EguiDx9<T> {
     ///
     /// initialize the backend.
     ///
@@ -228,7 +226,7 @@ impl<T: std::fmt::Debug + App> EguiDx9<T> {
     }
 }
 
-impl<T: std::fmt::Debug + App> EguiDx9<T> {
+impl<T: App> EguiDx9<T> {
     fn get_screen_size(&self) -> (f32, f32) {
         let mut rect = RECT::default();
         unsafe {
@@ -256,7 +254,7 @@ impl<T: std::fmt::Debug + App> EguiDx9<T> {
     }
 }
 
-impl<T: std::fmt::Debug + App> EguiDx9<T> {
+impl<T: App> EguiDx9<T> {
     pub fn state(&self) -> &T {
         &self.ui_state
     }
@@ -266,28 +264,9 @@ impl<T: std::fmt::Debug + App> EguiDx9<T> {
     }
 }
 
-impl<T: std::fmt::Debug + App> Drop for EguiDx9<T> {
+impl<T: App> Drop for EguiDx9<T> {
     fn drop(&mut self) {
         self.buffers.delete_buffers();
         self.tex_man.deallocate_textures();
-    }
-}
-
-impl<T: std::fmt::Debug + App> std::fmt::Debug for EguiDx9<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EguiDx9")
-            .field("ui_state", &self.ui_state)
-            .field("hwnd", &self.hwnd)
-            .field("reactive", &self.reactive)
-            .field("input_man", &self.input_man)
-            .field("tex_man", &self.tex_man)
-            .field("ctx", &self.ctx)
-            .field("buffers", &self.buffers)
-            .field("prims", &self.prims)
-            .field("last_idx_capacity", &self.last_idx_capacity)
-            .field("last_vtx_capacity", &self.last_vtx_capacity)
-            .field("should_reset", &self.should_reset)
-            .field("skip_frame", &self.skip_frame)
-            .finish_non_exhaustive()
     }
 }
