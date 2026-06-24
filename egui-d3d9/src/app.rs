@@ -17,6 +17,8 @@ pub trait App {
     fn ui(&mut self, ui: &mut Ui);
 }
 
+unsafe impl<T: App> Send for EguiDx9<T> {}
+
 pub struct EguiDx9<T: App> {
     ui_state: T,
     hwnd: HWND,
