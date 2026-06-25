@@ -1,5 +1,5 @@
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Frame, Id, Sense, Shadow, TextWrapMode, Ui,
+    Align2, Color32, CornerRadius, FontId, Frame, Id, Response, Sense, Shadow, TextWrapMode, Ui,
     scroll_area::ScrollSource, vec2,
 };
 
@@ -15,13 +15,13 @@ use crate::{
 
 #[derive(Debug)]
 pub struct MainWindow {
-    pub display: bool,
+    pub open: bool,
 }
 
 impl MainWindow {
     pub fn new(config: &Config) -> Self {
         Self {
-            display: config.open_on_startup,
+            open: config.open_on_startup,
         }
     }
 
@@ -31,7 +31,7 @@ impl MainWindow {
         stats: &mut Stats,
         manager: &mut PluginManager,
         config: &mut Config,
-    ) {
+    ) -> Option<Response> {
         let frame = Frame::new()
             .corner_radius(CornerRadius::ZERO)
             .fill(Color32::from_rgba_unmultiplied(
@@ -64,7 +64,8 @@ impl MainWindow {
                         ui.take_available_space();
                         self.window_content(ui, manager, stats, config);
                     });
-            });
+            })
+            .map(|inner| inner.response)
     }
 
     fn title_bar(&mut self, ui: &mut Ui) {
@@ -89,7 +90,7 @@ impl MainWindow {
             close_color,
         );
         if ui.interact(close_rect, id, Sense::click()).clicked() {
-            self.display = false;
+            self.open = false;
         }
 
         painter.text(
@@ -132,6 +133,10 @@ impl MainWindow {
             ui.checkbox(
                 &mut config.open_on_startup,
                 "Open manager window on startup",
+            );
+            ui.checkbox(
+                &mut config.hide_cursor_outside_manager,
+                "Hide cursor outside manager window",
             );
 
             ui.separator();

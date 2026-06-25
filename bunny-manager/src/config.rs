@@ -13,6 +13,7 @@ pub struct Config {
     pub toggle_manager_shortcut: KeyboardShortcut,
     pub collect_stats: bool,
     pub config_autosave_interval_seconds: u64,
+    pub hide_cursor_outside_manager: bool,
 }
 
 impl Default for Config {
@@ -23,6 +24,7 @@ impl Default for Config {
             toggle_manager_shortcut: KeyboardShortcut::new(Modifiers::CTRL, Key::Num0),
             collect_stats: false,
             config_autosave_interval_seconds: 60,
+            hide_cursor_outside_manager: false,
         }
     }
 }

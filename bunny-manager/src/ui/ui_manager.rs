@@ -44,10 +44,15 @@ impl egui_d3d9::App for UiManager<'_> {
             ui_init(ui.ctx(), &self.fonts_path);
             INIT.store(true, Ordering::Relaxed);
         }
-
         self.paint_cursor = false;
 
         self.plugin_manager.update_input(ui);
+
+        ui.input_mut(|i| {
+            if i.consume_shortcut(&self.config.toggle_manager_shortcut) {
+                self.main_window.open = !self.main_window.open;
+            }
+        });
 
         if self.config.config_autosave_interval_seconds > 0
             && self.last_autosave.elapsed()
@@ -65,23 +70,27 @@ impl egui_d3d9::App for UiManager<'_> {
             self.last_autosave = Instant::now();
         }
 
-        if self.main_window.display {
-            self.paint_cursor = true;
-            self.main_window.ui(
+        if self.main_window.open {
+            let resp_opt = self.main_window.ui(
                 ui,
                 &mut self.stats,
                 &mut self.plugin_manager,
                 &mut self.config,
             );
+            if self.config.hide_cursor_outside_manager {
+                ui.input(|i| {
+                    if let Some((pointer_pos, resp)) = i.pointer.latest_pos().zip(resp_opt)
+                        && resp.rect.contains(pointer_pos)
+                    {
+                        self.paint_cursor = true;
+                    }
+                });
+            } else {
+                self.paint_cursor = true;
+            }
         }
 
         self.plugin_manager.free_ui(ui, &self.config);
-
-        ui.input_mut(|i| {
-            if i.consume_shortcut(&self.config.toggle_manager_shortcut) {
-                self.main_window.display = !self.main_window.display;
-            }
-        });
 
         if self.paint_cursor
             && let Some(pointer_pos) = ui.pointer_latest_pos()
