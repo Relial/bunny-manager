@@ -1,33 +1,34 @@
 use anyhow::Result;
-use ilhook::x86::{CallbackOption, ClosureHookPoint, HookFlags, hook_closure_jmp_back};
+use ilhook::x86::{CallbackOption, HookFlags, HookPoint, HookType, Hooker, Registers};
 use tracing::{error, info};
 
 use crate::{address::Addresses, egui_hook::APP};
 
-fn hook_game_shutdown<'a>(addresses: Addresses) -> Result<ClosureHookPoint<'a>> {
-    let on_call = |_| {
-        if let Some(mut app) = APP.get().map(|l| l.lock().unwrap()) {
-            let state = app.state_mut();
-            if let Err(e) = state.config.save(&state.config_path) {
-                error!("Config save error: {e:#}");
-            }
-
-            info!("Unloading plugins");
-            state.plugin_manager.unload();
-            info!("Done unloading");
+unsafe extern "cdecl" fn on_game_shutdown(_: *mut Registers, _: usize) {
+    if let Some(mut app) = APP.get().map(|l| l.lock().unwrap()) {
+        let state = app.state_mut();
+        if let Err(e) = state.config.save(&state.config_path) {
+            error!("Config save error: {e:#}");
         }
-    };
-    let hook = unsafe {
-        hook_closure_jmp_back(
-            addresses.game_shutdown,
-            on_call,
-            CallbackOption::None,
-            HookFlags::empty(),
-        )
-    }?;
-    Ok(hook)
+
+        info!("Unloading plugins");
+        state.plugin_manager.unload();
+        info!("Done unloading");
+    }
 }
 
-pub fn init<'a>(addresses: &Addresses) -> Result<Vec<ClosureHookPoint<'a>>> {
+fn hook_game_shutdown(addresses: Addresses) -> Result<HookPoint> {
+    let builder = Hooker::new(
+        addresses.game_shutdown,
+        HookType::JmpBack(on_game_shutdown),
+        CallbackOption::None,
+        0,
+        HookFlags::empty(),
+    );
+    let hook_point = unsafe { builder.hook() }?;
+    Ok(hook_point)
+}
+
+pub fn init(addresses: &Addresses) -> Result<Vec<HookPoint>> {
     Ok(vec![hook_game_shutdown(*addresses)?])
 }
