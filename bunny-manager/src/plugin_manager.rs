@@ -8,7 +8,7 @@ use std::{
 
 use abi_stable::{
     external_types::RRwLock,
-    std_types::{RArc, RHashMap, RString},
+    std_types::{RArc, RHashMap, RString, RVec},
 };
 use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::{
@@ -43,7 +43,7 @@ pub struct PluginManager<'a> {
     global_style: bunny_ui::style::Style,
     dirs: PluginDirs,
     addresses: Addresses,
-    fonts: Vec<String>,
+    fonts: RVec<RString>,
     log_level: LogLevel,
     input: Input,
     response_pointerstate: RArc<PointerState>,
@@ -52,9 +52,9 @@ pub struct PluginManager<'a> {
 impl<'a> PluginManager<'a> {
     pub fn new(
         addresses: Addresses,
-        fonts: Vec<String>,
         log_level: LogLevel,
         creation_context: &egui::Context,
+        fonts: RVec<RString>,
     ) -> Self {
         let dirs = PluginDirs::new();
         let plugins = find_plugins(&dirs).unwrap_or_else(|e| {
@@ -78,7 +78,7 @@ impl<'a> PluginManager<'a> {
         let context = PluginContext::new(
             self.addresses.mhfo_info,
             self.dirs.configs_str.clone(),
-            &self.fonts,
+            self.fonts.clone(),
             self.log_level,
         );
         for plugin in &mut self.plugins {
@@ -93,7 +93,7 @@ impl<'a> PluginManager<'a> {
             let context = PluginContext::new(
                 self.addresses.mhfo_info,
                 self.dirs.configs.to_string_lossy(),
-                &self.fonts,
+                self.fonts.clone(),
                 self.log_level,
             );
             for mut plugin in new_plugins {
@@ -128,7 +128,7 @@ impl<'a> PluginManager<'a> {
                             plugin.load(PluginContext::new(
                                 self.addresses.mhfo_info,
                                 self.dirs.configs_str.as_str(),
-                                &self.fonts,
+                                self.fonts.clone(),
                                 self.log_level,
                             ));
                         }
@@ -300,94 +300,6 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    fn menu_ui(
-        &mut self,
-        ui: &mut Ui,
-        style: &bunny_ui::style::Style,
-        input: Input,
-        response_pointerstate: RArc<PointerState>,
-        available_space: Rect,
-        collect_stats: bool,
-    ) {
-        if let Some(funcs) = self.funcs {
-            let responses = self
-                .menu_responses
-                .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
-            let mut bunny_ui = BunnyUi::new(
-                Id::new(1),
-                responses.clone(),
-                input.clone(),
-                self.paint_list.clone(),
-                available_space,
-                ui.pixels_per_point(),
-                style.clone(),
-            );
-
-            if collect_stats {
-                self.stats.menu_timings().start();
-            }
-            unsafe { (funcs.menu_ui)(&mut bunny_ui) };
-
-            let mut new =
-                RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
-            bunny_ui.ui(ui, &mut new, response_pointerstate);
-            self.menu_responses = Some(RArc::new(new));
-
-            if collect_stats {
-                self.stats.menu_timings().pre_paint();
-            }
-            self.process_paint_list(ui);
-
-            if collect_stats {
-                self.stats.menu_timings().end();
-            }
-        }
-    }
-
-    fn free_ui(
-        &mut self,
-        ui: &mut Ui,
-        style: &bunny_ui::style::Style,
-        input: Input,
-        response_pointerstate: RArc<PointerState>,
-        available_space: Rect,
-        collect_stats: bool,
-    ) {
-        if let Some(funcs) = self.funcs {
-            let responses = self
-                .free_responses
-                .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
-            let mut bunny_ui = BunnyUi::new(
-                Id::new(1),
-                responses.clone(),
-                input.clone(),
-                self.paint_list.clone(),
-                available_space,
-                ui.pixels_per_point(),
-                style.clone(),
-            );
-
-            if collect_stats {
-                self.stats.ui_timings().start();
-            }
-            unsafe { (funcs.free_ui)(&mut bunny_ui) };
-
-            let mut new =
-                RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
-            bunny_ui.ui(ui, &mut new, response_pointerstate);
-            self.free_responses = Some(RArc::new(new));
-
-            if collect_stats {
-                self.stats.ui_timings().pre_paint();
-            }
-            self.process_paint_list(ui);
-
-            if collect_stats {
-                self.stats.ui_timings().end();
-            }
-        }
-    }
-
     fn process_paint_list(&mut self, ui: &mut Ui) {
         if self.enabled() {
             self.paint_list.write().ui(ui);
@@ -462,6 +374,96 @@ impl BunnyPlugin<'_> {
             format!("{} - {}", plugin_info.name(), plugin_info.version()).into()
         } else {
             Cow::from(&self.file_name)
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn menu_ui(
+        &mut self,
+        ui: &mut Ui,
+        style: &bunny_ui::style::Style,
+        input: Input,
+        response_pointerstate: RArc<PointerState>,
+        available_space: Rect,
+        collect_stats: bool,
+    ) {
+        if let Some(funcs) = self.funcs {
+            let responses = self
+                .menu_responses
+                .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
+            let mut bunny_ui = BunnyUi::new(
+                Id::new(1),
+                responses.clone(),
+                input.clone(),
+                self.paint_list.clone(),
+                available_space,
+                ui.pixels_per_point(),
+                style.clone(),
+            );
+
+            if collect_stats {
+                self.stats.menu_timings().start();
+            }
+            unsafe { (funcs.menu_ui)(&mut bunny_ui) };
+
+            let mut new =
+                RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
+            bunny_ui.ui(ui, &mut new, response_pointerstate);
+            self.menu_responses = Some(RArc::new(new));
+
+            if collect_stats {
+                self.stats.menu_timings().pre_paint();
+            }
+            self.process_paint_list(ui);
+
+            if collect_stats {
+                self.stats.menu_timings().end();
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn free_ui(
+        &mut self,
+        ui: &mut Ui,
+        style: &bunny_ui::style::Style,
+        input: Input,
+        response_pointerstate: RArc<PointerState>,
+        available_space: Rect,
+        collect_stats: bool,
+    ) {
+        if let Some(funcs) = self.funcs {
+            let responses = self
+                .free_responses
+                .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
+            let mut bunny_ui = BunnyUi::new(
+                Id::new(1),
+                responses.clone(),
+                input.clone(),
+                self.paint_list.clone(),
+                available_space,
+                ui.pixels_per_point(),
+                style.clone(),
+            );
+
+            if collect_stats {
+                self.stats.ui_timings().start();
+            }
+            unsafe { (funcs.free_ui)(&mut bunny_ui) };
+
+            let mut new =
+                RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
+            bunny_ui.ui(ui, &mut new, response_pointerstate);
+            self.free_responses = Some(RArc::new(new));
+
+            if collect_stats {
+                self.stats.ui_timings().pre_paint();
+            }
+            self.process_paint_list(ui);
+
+            if collect_stats {
+                self.stats.ui_timings().end();
+            }
         }
     }
 }

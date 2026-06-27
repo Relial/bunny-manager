@@ -1,10 +1,10 @@
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
 
-use anyhow::{Context as _, Result};
+use abi_stable::std_types::RString;
 use egui::{
     FontData, FontFamily, Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2,
     emath::GuiRounding as _,
@@ -21,6 +21,7 @@ use crate::{
     FONTS_DIR_NAME, LOG_LEVEL, MODULE_DIR_PATH,
     address::Addresses,
     config::{Config, get_config_path},
+    font::Fonts,
     plugin_manager::PluginManager,
     ui::{main_window::MainWindow, stats::Stats},
 };
@@ -32,7 +33,7 @@ pub struct UiManager<'a> {
     paint_cursor: bool,
     pub config: Config,
     pub config_path: PathBuf,
-    fonts_path: PathBuf,
+    fonts: Fonts,
     last_autosave: Instant,
     pub plugin_manager: PluginManager<'a>,
 }
@@ -41,7 +42,7 @@ impl egui_d3d9::App for UiManager<'_> {
     fn ui(&mut self, ui: &mut Ui) {
         if !INIT.load(Ordering::Relaxed) {
             // This runs on startup and at D3D9 Reset
-            ui_init(ui.ctx(), &self.fonts_path);
+            ui_init(ui.ctx(), &self.fonts);
             INIT.store(true, Ordering::Relaxed);
         }
         self.paint_cursor = false;
@@ -125,15 +126,20 @@ impl UiManager<'_> {
             .get()
             .expect("EXE_PATH must be initialized before UI manager init")
             .join(FONTS_DIR_NAME);
+        let fonts = Fonts::load(&fonts_path);
 
-        let fonts = ui_init(creation_context, &fonts_path);
         let log_level = LOG_LEVEL
             .get()
             .expect("LOG_LEVEL must be initialized before UI manager init");
-        let mut plugin_manager = PluginManager::new(addresses, fonts, *log_level, creation_context);
+        let font_names = fonts.names().map(RString::from).collect();
+        let mut plugin_manager =
+            PluginManager::new(addresses, *log_level, creation_context, font_names);
         info!("Loading plugins");
         plugin_manager.load_all();
         info!("Loading done");
+
+        ui_init(creation_context, &fonts);
+        INIT.store(true, Ordering::Relaxed);
 
         Self {
             stats: Default::default(),
@@ -141,7 +147,7 @@ impl UiManager<'_> {
             paint_cursor: false,
             config,
             config_path,
-            fonts_path,
+            fonts,
             last_autosave: Instant::now(),
             plugin_manager,
         }
@@ -153,7 +159,7 @@ impl UiManager<'_> {
     }
 }
 
-fn ui_init(ctx: &egui::Context, fonts_path: impl AsRef<Path>) -> Vec<String> {
+fn ui_init(ctx: &egui::Context, fonts: &Fonts) {
     egui_extras::install_image_loaders(ctx);
     ctx.disable_accesskit();
     ctx.global_style_mut(|s| s.interaction.tooltip_delay = 0.1);
@@ -174,10 +180,7 @@ fn ui_init(ctx: &egui::Context, fonts_path: impl AsRef<Path>) -> Vec<String> {
         ],
     ));
 
-    add_fonts(fonts_path, ctx).unwrap_or_else(|e| {
-        error!("Error adding fonts: {e:#}");
-        Vec::new()
-    })
+    fonts.add_all(ctx);
 }
 
 fn paint_cursor(pos: Pos2, ui: &Ui) {
@@ -200,57 +203,4 @@ fn paint_cursor(pos: Pos2, ui: &Ui) {
     if let Ok(TexturePoll::Ready { texture }) = texture {
         paint_texture_at(&painter, rect, cursor.image_options(), &texture);
     }
-}
-
-fn add_fonts(path: impl AsRef<Path>, ctx: &egui::Context) -> Result<Vec<String>> {
-    info!("Adding fonts");
-    let mut fonts = Vec::new();
-    let path = path.as_ref();
-    for entry in path
-        .read_dir()
-        .with_context(|| format!("Failed to read fonts dir at {}", path.display()))?
-    {
-        match entry {
-            Ok(entry) => {
-                let entry_path = entry.path();
-                if let Some(ext) = entry_path.extension()
-                    && (ext.eq_ignore_ascii_case("ttf") || ext.eq_ignore_ascii_case("otf"))
-                {
-                    match std::fs::read(&entry_path) {
-                        Ok(font_bytes) => {
-                            if let Some(file_name) = entry_path.file_stem() {
-                                let n = file_name.to_string_lossy();
-                                ctx.add_font(FontInsert::new(
-                                    &n,
-                                    FontData::from_owned(font_bytes),
-                                    vec![InsertFontFamily {
-                                        family: FontFamily::Name(n.clone().into()),
-                                        priority: FontPriority::Highest,
-                                    }],
-                                ));
-                                info!("Added {}", &n);
-                                fonts.push(n.into());
-                            } else {
-                                error!(
-                                    "Failed to extract file name from path {}",
-                                    entry_path.display()
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            error!(
-                                "Failed to read font file at {}: {e:#}",
-                                entry_path.display()
-                            );
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Error reading directory entry: {e:#}");
-            }
-        }
-    }
-    info!("Done adding fonts");
-    Ok(fonts)
 }

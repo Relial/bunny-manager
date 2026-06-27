@@ -40,6 +40,7 @@ mod egui_hook;
 mod hooks;
 mod plugin_manager;
 mod ui;
+mod font;
 
 fn get_own_dir(module: HMODULE) -> Result<PathBuf> {
     let mut buf = [0; 1024];
