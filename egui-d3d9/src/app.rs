@@ -64,7 +64,7 @@ impl<T: App> EguiDx9<T> {
             reactive,
             tex_man: TextureManager::new(),
             input_man: InputManager::new(hwnd),
-            ctx: Context::default(),
+            ctx,
             buffers: Buffers::create_buffers(dev, 16384, 16384),
             prims: Vec::new(),
             last_idx_capacity: 0,
