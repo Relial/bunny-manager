@@ -40,10 +40,10 @@ pub struct UiManager<'a> {
 
 impl egui_d3d9::App for UiManager<'_> {
     fn ui(&mut self, ui: &mut Ui) {
-        if !INIT.load(Ordering::Relaxed) {
+        if !INIT.load(Ordering::Acquire) {
             // This runs on startup and at D3D9 Reset
             ui_init(ui.ctx(), &self.fonts);
-            INIT.store(true, Ordering::Relaxed);
+            INIT.store(true, Ordering::Release);
         }
         self.paint_cursor = false;
 

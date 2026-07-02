@@ -100,24 +100,21 @@ fn hk_reset(
 ) -> HRESULT {
     unsafe {
         debug!("hk_reset called");
-        let mut app = APP
-            .get()
-            .expect("EguiDx9 not initialized at hk_reset")
-            .lock()
-            .unwrap();
-        app.pre_reset();
-        INIT.store(false, Ordering::Relaxed);
+        if let Some(m) = APP.get() {
+            let mut app = m.lock().unwrap();
+            app.pre_reset();
+            INIT.store(false, Ordering::Release);
+        }
         ResetHook.call(device, presentation_parameters)
     }
 }
 
 fn hk_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
-        APP.get()
-            .expect("EguiDx9 not initialized at hk_wnd_proc")
-            .lock()
-            .unwrap()
-            .wnd_proc(msg, wparam, lparam);
+        if let Some(m) = APP.get() {
+            let mut app = m.lock().unwrap();
+            app.wnd_proc(msg, wparam, lparam);
+        }
         CallWindowProcW(O_WND_PROC.unwrap(), hwnd, msg, wparam, lparam)
     }
 }
