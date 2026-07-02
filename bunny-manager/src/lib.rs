@@ -12,16 +12,25 @@ use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::LogLevel;
 use mimalloc::MiMalloc;
 use tracing::{debug, error, info};
-use windows::Win32::{
-    Foundation::{CloseHandle, HINSTANCE, HMODULE},
-    System::{
-        LibraryLoader::{DisableThreadLibraryCalls, FreeLibraryAndExitThread, GetModuleFileNameW},
-        SystemServices::DLL_PROCESS_ATTACH,
-        Threading::{CreateThread, THREAD_CREATION_FLAGS},
+use windows::{
+    Win32::{
+        Foundation::{CloseHandle, HINSTANCE, HMODULE},
+        System::{
+            LibraryLoader::{
+                DisableThreadLibraryCalls, FreeLibraryAndExitThread, GetModuleFileNameW,
+            },
+            SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH},
+            Threading::{CreateThread, THREAD_CREATION_FLAGS},
+        },
+        UI::WindowsAndMessaging::{MB_OK, MessageBoxW},
     },
+    core::HSTRING,
 };
 
-use crate::address::{Addresses, find_addresses};
+use crate::{
+    address::{Addresses, find_addresses},
+    egui_hook::APP,
+};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -37,10 +46,15 @@ pub static ADDRESSES: OnceLock<Addresses> = OnceLock::new();
 mod address;
 mod config;
 mod egui_hook;
-mod hooks;
+mod font;
 mod plugin_manager;
 mod ui;
-mod font;
+
+fn message_box_error(error: anyhow::Error) {
+    let body = HSTRING::from(format!("{error:#}"));
+    let caption = HSTRING::from("Bunny Manager error");
+    unsafe { MessageBoxW(None, &body, &caption, MB_OK) };
+}
 
 fn get_own_dir(module: HMODULE) -> Result<PathBuf> {
     let mut buf = [0; 1024];
@@ -145,10 +159,6 @@ fn fallible(module: HMODULE) -> Result<()> {
     egui_hook::hook(addresses.hwnd())?;
     info!("D3D9 hooks done");
 
-    info!("Hooking game functions");
-    let _hooks = hooks::init(&addresses)?;
-    info!("Game hooks done");
-
     const KEEPALIVE: Duration = Duration::from_secs(1);
     loop {
         sleep(KEEPALIVE);
@@ -159,6 +169,7 @@ extern "system" fn main(lp_parameter: *mut c_void) -> u32 {
     let module = HMODULE(lp_parameter);
     if let Err(e) = fallible(module) {
         error!("{e:#}");
+        message_box_error(e);
     }
     unsafe {
         FreeLibraryAndExitThread(module, 0);
@@ -167,8 +178,8 @@ extern "system" fn main(lp_parameter: *mut c_void) -> u32 {
 
 #[unsafe(no_mangle)]
 extern "system" fn DllMain(hinst: HINSTANCE, fdw_reason: u32, _lpv_reserved: *mut ()) -> bool {
-    if fdw_reason == DLL_PROCESS_ATTACH {
-        unsafe {
+    match fdw_reason {
+        DLL_PROCESS_ATTACH => unsafe {
             let _ = DisableThreadLibraryCalls(hinst.into());
             if let Ok(handle) = CreateThread(
                 None,
@@ -180,7 +191,17 @@ extern "system" fn DllMain(hinst: HINSTANCE, fdw_reason: u32, _lpv_reserved: *mu
             ) {
                 let _ = CloseHandle(handle);
             }
+        },
+        DLL_PROCESS_DETACH => {
+            if let Some(m) = APP.get() {
+                let app = m.lock().unwrap();
+                let state = app.state();
+                if let Err(e) = state.config.save(&state.config_path) {
+                    error!("Config save error: {e:#}");
+                }
+            }
         }
+        _ => {}
     }
     true
 }

@@ -3,6 +3,10 @@ use std::{
     ffi::{OsStr, c_void},
     mem::transmute,
     path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     thread::JoinHandle,
 };
 
@@ -21,9 +25,9 @@ use bunny_plugin::{
         ui::BunnyUi,
     },
 };
-use egui::{Checkbox, CollapsingHeader, Id, Rect, Ui};
+use egui::{Checkbox, CollapsingHeader, Id, Rect, TextWrapMode, Ui};
 use rapidhash::fast::RandomState;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use windows::{
     Win32::{
         Foundation::{FreeLibrary, HMODULE},
@@ -118,19 +122,29 @@ impl<'a> PluginManager<'a> {
     pub fn menu_ui(&mut self, ui: &mut Ui, config: &Config) {
         for plugin in &mut self.plugins {
             ui.horizontal(|ui| {
-                let mut temp = plugin.loaded();
                 ui.scope(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
-                    if ui.add(Checkbox::without_text(&mut temp)).clicked() {
-                        if plugin.loaded() {
-                            plugin.unload();
-                        } else {
-                            plugin.load(PluginContext::new(
-                                self.addresses.mhfo_info,
-                                self.dirs.configs_str.as_str(),
-                                self.fonts.clone(),
-                                self.log_level,
-                            ));
+                    match &plugin.status {
+                        PluginStatus::Enabled
+                        | PluginStatus::LoadedInitFailed(_)
+                        | PluginStatus::LoadedIncompatible
+                        | PluginStatus::LoadedWrongApiVersion(_) => {
+                            if ui.add(Checkbox::without_text(&mut true)).clicked() {
+                                plugin.unload();
+                            }
+                        }
+                        PluginStatus::Unloaded | PluginStatus::UnloadedStillBusy => {
+                            if ui.add(Checkbox::without_text(&mut false)).clicked() {
+                                plugin.load(PluginContext::new(
+                                    self.addresses.mhfo_info,
+                                    self.dirs.configs_str.as_str(),
+                                    self.fonts.clone(),
+                                    self.log_level,
+                                ));
+                            }
+                        }
+                        PluginStatus::UnloadFailed => {
+                            ui.add_enabled(false, Checkbox::without_text(&mut true));
                         }
                     }
                 });
@@ -152,6 +166,12 @@ impl<'a> PluginManager<'a> {
                     });
                 }
             });
+            if let Some(context) = plugin.status.context() {
+                ui.indent(ui.next_auto_id(), |ui| {
+                    ui.style_mut().wrap_mode = Some(TextWrapMode::Wrap);
+                    ui.label(context);
+                });
+            }
         }
     }
 
@@ -182,16 +202,11 @@ impl<'a> PluginManager<'a> {
     pub fn save(&self) -> Vec<JoinHandle<()>> {
         self.plugins.iter().flat_map(|p| p.save()).collect()
     }
-
-    pub fn unload(&mut self) -> Vec<JoinHandle<()>> {
-        self.plugins.iter_mut().flat_map(|p| p.unload()).collect()
-    }
 }
 
 type FnPluginInit = unsafe extern "C" fn(PluginContext) -> PluginInfo;
 type FnPluginMenu = unsafe extern "C" fn(&mut BunnyUi);
 type FnPluginUi = unsafe extern "C" fn(&mut BunnyUi);
-type FnPluginUnload = unsafe extern "C" fn();
 type FnPluginSave = unsafe extern "C" fn();
 
 #[derive(Clone, Copy)]
@@ -199,7 +214,6 @@ struct PluginFuncs {
     init: FnPluginInit,
     menu_ui: FnPluginMenu,
     free_ui: FnPluginUi,
-    unload: FnPluginUnload,
     save: FnPluginSave,
 }
 
@@ -212,33 +226,27 @@ impl PluginFuncs {
                 .ok_or(anyhow!("plugin function 'menu' not found"))?;
             let raw_ui = GetProcAddress(module, s!("ui"))
                 .ok_or(anyhow!("plugin function 'ui' not found"))?;
-            let raw_unload = GetProcAddress(module, s!("unload"))
-                .ok_or(anyhow!("plugin function 'unload' not found"))?;
             let raw_save = GetProcAddress(module, s!("save"))
                 .ok_or(anyhow!("plugin function 'save' not found"))?;
 
             let init: FnPluginInit = transmute(raw_init);
             let menu_ui: FnPluginMenu = transmute(raw_menu);
             let free_ui: FnPluginUi = transmute(raw_ui);
-            let unload: FnPluginUnload = transmute(raw_unload);
             let save: FnPluginSave = transmute(raw_save);
 
             Ok(Self {
                 init,
                 menu_ui,
                 free_ui,
-                unload,
                 save,
             })
         }
     }
 }
 
-// TODO keep track of save/unload threads finishing so no load/save/unload operation is started while a thread is running
-
-#[derive(Clone)]
 struct BunnyPlugin<'a> {
     file_name: String,
+    status: PluginStatus,
     info: Option<PluginInfo>,
     stats: PluginStats,
     funcs: Option<PluginFuncs>,
@@ -247,12 +255,15 @@ struct BunnyPlugin<'a> {
     paint_list: RArc<RRwLock<PaintList<'a>>>,
     menu_responses: Option<RArc<RHashMap<Id, Response, RandomState>>>,
     free_responses: Option<RArc<RHashMap<Id, Response, RandomState>>>,
+    save_lock: Arc<Mutex<()>>,
+    unload_failed: Arc<AtomicBool>,
 }
 
 impl BunnyPlugin<'_> {
     fn new(file_name: String, plugin_path: PathBuf) -> Self {
         Self {
             file_name,
+            status: PluginStatus::Unloaded,
             info: None,
             stats: PluginStats::default(),
             funcs: None,
@@ -261,10 +272,27 @@ impl BunnyPlugin<'_> {
             paint_list: RArc::new(RRwLock::new(PaintList::new())),
             menu_responses: None,
             free_responses: None,
+            save_lock: Arc::new(Mutex::new(())),
+            unload_failed: Arc::new(AtomicBool::new(false)),
         }
     }
 
     fn load(&mut self, plugin_context: PluginContext) {
+        if self.unload_failed.load(Ordering::Acquire) {
+            error!(
+                "{} failed to unload, so it can't be loaded again. Please restart the game.",
+                self.name()
+            );
+            self.status = PluginStatus::UnloadFailed;
+            return;
+        } else if self.save_lock.try_lock().is_err() {
+            error!(
+                "Tried to load {}, but it was busy saving/unloading",
+                &self.file_name
+            );
+            self.status = PluginStatus::UnloadedStillBusy;
+            return;
+        }
         match unsafe { LoadLibraryW(&HSTRING::from(self.plugin_path.as_path())) } {
             Ok(module) => {
                 self.module_handle = Some(module.0 as usize);
@@ -276,9 +304,11 @@ impl BunnyPlugin<'_> {
                                 let info = unsafe { (funcs.init)(plugin_context) };
                                 if let Err(e) = info.init() {
                                     warn!("{} failed to initialize: {e:#}", info.name());
+                                    self.status = PluginStatus::LoadedInitFailed(format!("{e:#}"));
                                 } else {
                                     self.info = Some(info);
                                     self.funcs = Some(funcs);
+                                    self.status = PluginStatus::Enabled;
                                 }
                             } else {
                                 error!(
@@ -286,16 +316,24 @@ impl BunnyPlugin<'_> {
                                     self.file_name,
                                     bunny_plugin::BUNNY_API_VERSION,
                                     plugin_api_ver
-                                )
+                                );
+                                self.status = PluginStatus::LoadedWrongApiVersion(plugin_api_ver);
                             }
                         }
-                        Err(e) => error!("{}: {}", self.file_name, e),
+                        Err(e) => {
+                            error!("{}: {}", self.file_name, e);
+                            self.status = PluginStatus::LoadedIncompatible;
+                        }
                     },
-                    Err(e) => error!("{}: {}", self.file_name, e),
+                    Err(e) => {
+                        error!("{}: {}", self.file_name, e);
+                        self.status = PluginStatus::LoadedIncompatible;
+                    }
                 }
             }
             Err(e) => {
                 error!("Error loading {}: {e:#}", &self.file_name);
+                self.status = PluginStatus::Unloaded;
             }
         }
     }
@@ -309,56 +347,51 @@ impl BunnyPlugin<'_> {
     fn save(&self) -> Option<JoinHandle<()>> {
         self.funcs.map(|f| {
             let save = f.save;
-            std::thread::spawn(move || unsafe { save() })
+            let lock = self.save_lock.clone();
+            std::thread::spawn(move || unsafe {
+                {
+                    if let Ok(_guard) = lock.try_lock() {
+                        save();
+                    }
+                }
+            })
         })
     }
 
     fn unload(&mut self) -> Option<JoinHandle<()>> {
-        let thread_handle = self
-            .funcs
-            .zip(self.module_handle)
-            .map(|(funcs, module_handle)| {
-                let file_name = self.file_name.clone();
-                let save = funcs.save;
-                let unload = funcs.unload;
-                std::thread::spawn(move || unsafe {
-                    let module = HMODULE(module_handle as *mut c_void);
-                    save();
-                    unload();
-                    if let Err(e) = FreeLibrary(module) {
-                        error!("Error unloading {}: {e:#}", file_name);
-                    } else {
-                        info!("Unloaded {}", file_name);
-                    }
-                })
-            });
-
-        if thread_handle.is_none()
-            && let Some(module_handle) = self.module_handle
-        {
-            let module = HMODULE(module_handle as *mut c_void);
-            if let Err(e) = unsafe { FreeLibrary(module) } {
-                error!("Error unloading {}: {e:#}", self.file_name);
-            } else {
-                info!("Unloaded {}", self.file_name);
-            }
-        }
+        let thread_handle = self.module_handle.map(|handle| {
+            let lock = self.save_lock.clone();
+            let fail_indicator = self.unload_failed.clone();
+            let file_name = self.file_name.clone();
+            std::thread::spawn(move || {
+                let module = HMODULE(handle as *mut c_void);
+                let _guard = lock.try_lock().unwrap_or_else(|_| {
+                    debug!("Waiting for save lock to become available before unloading.");
+                    let guard = lock.lock().unwrap();
+                    debug!("Save lock available");
+                    guard
+                });
+                if let Err(e) = unsafe { FreeLibrary(module) } {
+                    error!("Error unloading {}: {e:#}", file_name);
+                    fail_indicator.store(true, Ordering::Release);
+                } else {
+                    info!("Unloaded {}", file_name);
+                }
+            })
+        });
 
         self.funcs = None;
         self.module_handle = None;
         self.menu_responses = None;
         self.free_responses = None;
         self.paint_list.write().clear();
+        self.status = PluginStatus::Unloaded;
 
         thread_handle
     }
 
-    fn loaded(&self) -> bool {
-        self.module_handle.is_some()
-    }
-
     fn enabled(&self) -> bool {
-        self.funcs.is_some()
+        self.status == PluginStatus::Enabled
     }
 
     fn name(&self) -> &str {
@@ -377,7 +410,6 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn menu_ui(
         &mut self,
         ui: &mut Ui,
@@ -422,7 +454,6 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn free_ui(
         &mut self,
         ui: &mut Ui,
@@ -471,6 +502,46 @@ impl BunnyPlugin<'_> {
 impl PartialEq for BunnyPlugin<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.file_name == other.file_name
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PluginStatus {
+    Unloaded,
+    UnloadedStillBusy,
+    UnloadFailed,
+    LoadedIncompatible,
+    LoadedWrongApiVersion(u32),
+    LoadedInitFailed(String),
+    Enabled,
+}
+
+impl PluginStatus {
+    fn context(&self) -> Option<Cow<'static, str>> {
+        match self {
+            PluginStatus::Unloaded => None,
+            PluginStatus::UnloadedStillBusy => Some(
+                "Still busy saving/unloading. Try again in a moment or restart your game.".into(),
+            ),
+            PluginStatus::UnloadFailed => {
+                Some("Failed to unload. Restart the game to load.".into())
+            }
+            PluginStatus::LoadedIncompatible => {
+                Some("Incompatible plugin. Loaded, but running independently.".into())
+            }
+            PluginStatus::LoadedWrongApiVersion(plugin_api_version) => Some(
+                format!(
+                    "API version mismatch: Manager API: {} | Plugin API: {}",
+                    bunny_plugin::BUNNY_API_VERSION,
+                    plugin_api_version
+                )
+                .into(),
+            ),
+            PluginStatus::LoadedInitFailed(reason) => {
+                Some(format!("Plugin init failed: {}", reason).into())
+            }
+            PluginStatus::Enabled => None,
+        }
     }
 }
 
