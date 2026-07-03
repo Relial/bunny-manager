@@ -55,9 +55,9 @@ impl egui_d3d9::App for UiManager<'_> {
             }
         });
 
-        if self.config.config_autosave_interval_seconds > 0
+        if self.config.autosave_interval_seconds > 0
             && self.last_autosave.elapsed()
-                > Duration::from_secs(self.config.config_autosave_interval_seconds)
+                > Duration::from_secs(self.config.autosave_interval_seconds)
         {
             debug!("Autosaving");
             let config_path = self.config_path.clone();
@@ -77,6 +77,7 @@ impl egui_d3d9::App for UiManager<'_> {
                 &mut self.stats,
                 &mut self.plugin_manager,
                 &mut self.config,
+                self.last_autosave,
             );
             if self.config.hide_cursor_outside_manager {
                 ui.input(|i| {

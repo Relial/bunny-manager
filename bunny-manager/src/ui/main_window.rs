@@ -1,6 +1,8 @@
+use std::time::{Duration, Instant};
+
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Frame, Id, Response, Sense, Shadow, TextWrapMode, Ui,
-    scroll_area::ScrollSource, vec2,
+    Align2, Color32, CornerRadius, FontId, Frame, Id, ProgressBar, Response, Sense, Shadow,
+    TextWrapMode, Ui, scroll_area::ScrollSource, vec2,
 };
 
 use crate::{
@@ -31,6 +33,7 @@ impl MainWindow {
         stats: &mut Stats,
         manager: &mut PluginManager,
         config: &mut Config,
+        last_autosave: Instant,
     ) -> Option<Response> {
         let frame = Frame::new()
             .corner_radius(CornerRadius::ZERO)
@@ -62,7 +65,7 @@ impl MainWindow {
                     .wheel_scroll_multiplier(vec2(1.0, 2.5))
                     .show(ui, |ui| {
                         ui.take_available_space();
-                        self.window_content(ui, manager, stats, config);
+                        self.window_content(ui, manager, stats, config, last_autosave);
                     });
             })
             .map(|inner| inner.response)
@@ -114,6 +117,7 @@ impl MainWindow {
         plugin_manager: &mut PluginManager,
         stats: &mut Stats,
         config: &mut Config,
+        last_autosave: Instant,
     ) {
         ui.collapsing("Settings", |ui| {
             ui.label("Background opacity");
@@ -122,10 +126,17 @@ impl MainWindow {
             ui.separator();
 
             ui.label("Config autosave interval seconds (0 to disable)");
-            ui.add(egui::Slider::new(
-                &mut config.config_autosave_interval_seconds,
+            let slider_resp = ui.add(egui::Slider::new(
+                &mut config.autosave_interval_seconds,
                 0..=600,
             ));
+            let autosave_interval = Duration::from_secs(config.autosave_interval_seconds);
+            let save_progress = 1.0 - (last_autosave.elapsed().div_duration_f32(autosave_interval));
+            ui.add(
+                ProgressBar::new(save_progress)
+                    .desired_height(5.0)
+                    .desired_width(slider_resp.rect.width()),
+            );
 
             ui.separator();
 
