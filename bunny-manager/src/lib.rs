@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::OnceLock,
-    thread::sleep,
+    thread::{self, sleep},
     time::Duration,
 };
 
@@ -165,7 +165,30 @@ fn fallible(module: HMODULE) -> Result<()> {
     }
 }
 
+fn hook_panic() {
+    std::panic::set_hook(Box::new(|info| {
+        let location = info.location().unwrap();
+        let payload = info.payload();
+        let msg = if let Some(&s) = payload.downcast_ref::<&'static str>() {
+            s
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s.as_str()
+        } else {
+            "Box<dyn Any>"
+        };
+        let thread = thread::current();
+        let name = thread.name().unwrap_or("<unnamed>");
+        let err = anyhow!("thread '{name}' panicked at {location}:\n{msg}");
+        message_box_error(err);
+
+        // For some reason without an abort a zombie process is left up after the message box is cleared
+        std::process::abort();
+    }));
+}
+
 extern "system" fn main(lp_parameter: *mut c_void) -> u32 {
+    hook_panic();
+
     let module = HMODULE(lp_parameter);
     if let Err(e) = fallible(module) {
         error!("{e:#}");
