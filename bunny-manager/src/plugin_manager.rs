@@ -24,6 +24,7 @@ use bunny_plugin::{
         response::Response,
         ui::BunnyUi,
     },
+    hook::HookKind,
 };
 use egui::{Checkbox, CollapsingHeader, Id, Rect, TextWrapMode, Ui};
 use rapidhash::fast::RandomState;
@@ -201,6 +202,17 @@ impl<'a> PluginManager<'a> {
 
     pub fn save(&self) -> Vec<JoinHandle<()>> {
         self.plugins.iter().flat_map(|p| p.save()).collect()
+    }
+
+    pub fn run_hook_callbacks(&self, kind: HookKind) {
+        for callback in self
+            .plugins
+            .iter()
+            .filter_map(|p| p.info.as_ref().map(|i| i.hooks.callback(kind)))
+            .flatten()
+        {
+            unsafe { callback() };
+        }
     }
 }
 

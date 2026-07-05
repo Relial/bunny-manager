@@ -11,7 +11,10 @@ pub struct Addresses {
     pub mhfo_info: MhfoInfo,
     hwnd: usize,
     pub game_state: usize,
-    pub game_shutdown: usize,
+    pub lobby_update: usize,
+    pub quest_update: usize,
+    pub quest_ending_update: usize,
+    pub quest_complete_update: usize,
 }
 
 pub fn find_addresses() -> Addresses {
@@ -36,13 +39,19 @@ impl Addresses {
                 mhfo_info,
                 hwnd: dll + 0x5bd9e08,
                 game_state: dll + 0x5b460d0,
-                game_shutdown: dll + 0x1568a6f,
+                lobby_update: dll + 0x882160,
+                quest_update: dll + 0x880360,
+                quest_ending_update: dll + 0x880cd0,
+                quest_complete_update: dll + 0x8810b0,
             },
             GameMode::HighGrade => Self {
                 mhfo_info,
                 hwnd: dll + 0xe811a38,
                 game_state: dll + 0xe77dcf8,
-                game_shutdown: dll + 0x158f8bf,
+                lobby_update: dll + 0x89dc20,
+                quest_update: dll + 0x89be10,
+                quest_ending_update: dll + 0x89c780,
+                quest_complete_update: dll + 0x89cb50,
             },
         }
     }

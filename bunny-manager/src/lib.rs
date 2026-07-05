@@ -49,6 +49,7 @@ mod egui_hook;
 mod font;
 mod plugin_manager;
 mod ui;
+mod hooks;
 
 fn message_box_error(error: anyhow::Error) {
     let body = HSTRING::from(format!("{error:#}"));
@@ -158,6 +159,10 @@ fn fallible(module: HMODULE) -> Result<()> {
     info!("Hooking D3D9");
     egui_hook::hook(addresses.hwnd())?;
     info!("D3D9 hooks done");
+
+    info!("Hooking game functions");
+    let _hooks = hooks::init(&addresses)?;
+    info!("Game function hooks done");
 
     const KEEPALIVE: Duration = Duration::from_secs(1);
     loop {
