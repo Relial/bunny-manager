@@ -35,5 +35,5 @@ windows = { version = "0.62.2", features = [
 windows-registry = "0.4.0"
 
 clipboard = "0.5.0"
-egui = "0.34.1"
+egui = "0.34.3"
 windows-numerics = "0.3.1"

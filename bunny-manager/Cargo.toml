@@ -8,8 +8,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0.102"
-egui = { version = "0.34.1", features = ["serde", "rayon"] }
-egui_extras = { version = "0.34.1", features = ["all_loaders"] }
+egui = { version = "0.34.3", features = ["serde", "rayon"] }
+egui_extras = { version = "0.34.3", features = ["all_loaders"] }
 egui-d3d9 = { path = "../egui-d3d9" }
 bunny-plugin = { path = "../../bunny-plugin" }
 mimalloc = "0.1.48"
