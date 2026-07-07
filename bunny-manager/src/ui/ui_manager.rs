@@ -61,7 +61,7 @@ impl egui_d3d9::App for UiManager<'_> {
         {
             debug!("Autosaving");
             let config_path = self.config_path.clone();
-            let config = self.config;
+            let config = self.config.clone();
             std::thread::spawn(move || {
                 if let Err(e) = config.save(&config_path) {
                     error!("Config save error: {e:#}");
@@ -105,7 +105,7 @@ impl egui_d3d9::App for UiManager<'_> {
 impl UiManager<'_> {
     pub fn new(creation_context: &egui::Context, addresses: Addresses) -> Self {
         let config_path = get_config_path();
-        let config = match Config::load(&config_path) {
+        let mut config = match Config::load(&config_path) {
             Ok(config) => config,
             Err(e) => {
                 error!(
@@ -136,8 +136,15 @@ impl UiManager<'_> {
         let mut plugin_manager =
             PluginManager::new(addresses, *log_level, creation_context, font_names);
         info!("Loading plugins");
-        plugin_manager.load_all();
+        plugin_manager.load_all(&config.manually_disabled_plugins);
         info!("Loading done");
+
+        // If a user deletes a plugin and then later adds it back in, they probably want it to be loaded again.
+        config.manually_disabled_plugins.retain(|disabled| {
+            plugin_manager
+                .file_names()
+                .any(|file_name| file_name == disabled)
+        });
 
         ui_init(creation_context, &fonts);
         INIT.store(true, Ordering::Relaxed);

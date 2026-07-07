@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    collections::HashSet,
     ffi::{OsStr, c_void},
     mem::transmute,
     path::PathBuf,
@@ -79,7 +80,7 @@ impl<'a> PluginManager<'a> {
         }
     }
 
-    pub fn load_all(&mut self) {
+    pub fn load_all(&mut self, manually_disabled: &HashSet<String>) {
         let context = PluginContext::new(
             self.addresses.mhfo_info,
             self.dirs.configs_str.clone(),
@@ -87,6 +88,10 @@ impl<'a> PluginManager<'a> {
             self.log_level,
         );
         for plugin in &mut self.plugins {
+            if manually_disabled.contains(&plugin.file_name) {
+                info!("{} was manually disabled, skipping", &plugin.file_name);
+                continue;
+            }
             plugin.load(context.clone());
         }
     }
@@ -110,6 +115,10 @@ impl<'a> PluginManager<'a> {
         }
     }
 
+    pub fn file_names(&self) -> impl Iterator<Item = &str> {
+        self.plugins.iter().map(|p| p.file_name.as_str())
+    }
+
     pub fn update_input(&mut self, ui: &mut Ui) {
         let input_options = ui.options(|o| o.input_options);
         ui.input(|i| {
@@ -120,7 +129,7 @@ impl<'a> PluginManager<'a> {
         self.response_pointerstate = self.input.read(|i| RArc::new(i.pointer.clone()));
     }
 
-    pub fn menu_ui(&mut self, ui: &mut Ui, config: &Config) {
+    pub fn menu_ui(&mut self, ui: &mut Ui, config: &mut Config) {
         for plugin in &mut self.plugins {
             ui.horizontal(|ui| {
                 ui.scope(|ui| {
@@ -132,6 +141,9 @@ impl<'a> PluginManager<'a> {
                         | PluginStatus::LoadedWrongApiVersion(_) => {
                             if ui.add(Checkbox::without_text(&mut true)).clicked() {
                                 plugin.unload();
+                                config
+                                    .manually_disabled_plugins
+                                    .insert(plugin.file_name.clone());
                             }
                         }
                         PluginStatus::Unloaded | PluginStatus::UnloadedStillBusy => {
@@ -142,6 +154,7 @@ impl<'a> PluginManager<'a> {
                                     self.fonts.clone(),
                                     self.log_level,
                                 ));
+                                config.manually_disabled_plugins.remove(&plugin.file_name);
                             }
                         }
                         PluginStatus::UnloadFailed => {

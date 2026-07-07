@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::{collections::HashSet, path::{Path, PathBuf}};
 
 use anyhow::Result;
 use egui::{Key, KeyboardShortcut, Modifiers};
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{CONFIG_DIR_NAME, MODULE_DIR_PATH};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub opacity: u8,
     pub open_on_startup: bool,
@@ -14,6 +14,7 @@ pub struct Config {
     pub collect_stats: bool,
     pub autosave_interval_seconds: u64,
     pub hide_cursor_outside_manager: bool,
+    pub manually_disabled_plugins: HashSet<String>,
 }
 
 impl Default for Config {
@@ -25,6 +26,7 @@ impl Default for Config {
             collect_stats: false,
             autosave_interval_seconds: 60,
             hide_cursor_outside_manager: false,
+            manually_disabled_plugins: HashSet::new(),
         }
     }
 }
