@@ -406,6 +406,7 @@ impl BunnyPlugin<'_> {
         });
 
         self.funcs = None;
+        self.info = None;
         self.module_handle = None;
         self.menu_responses = None;
         self.free_responses = None;
