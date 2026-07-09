@@ -46,7 +46,7 @@ use crate::{
 #[derive(Debug)]
 pub struct PluginManager<'a> {
     plugins: Vec<BunnyPlugin<'a>>,
-    global_style: bunny_ui::style::Style,
+    global_style: RArc<bunny_ui::style::Style>,
     dirs: PluginDirs,
     addresses: Addresses,
     fonts: RVec<RString>,
@@ -67,7 +67,9 @@ impl<'a> PluginManager<'a> {
             error!("Error finding plugins: {e:#}");
             Vec::new()
         });
-        let global_style = bunny_ui::style::Style::from_egui(&creation_context.global_style());
+        let global_style = RArc::new(bunny_ui::style::Style::from_egui(
+            &creation_context.global_style(),
+        ));
         Self {
             plugins,
             global_style,
@@ -168,7 +170,7 @@ impl<'a> PluginManager<'a> {
                     CollapsingHeader::new(plugin.name_version()).show(ui, |ui| {
                         plugin.menu_ui(
                             ui,
-                            &self.global_style,
+                            self.global_style.clone(),
                             self.input.clone(),
                             self.response_pointerstate.clone(),
                             ui.max_rect(),
@@ -195,7 +197,7 @@ impl<'a> PluginManager<'a> {
         for plugin in &mut self.plugins {
             plugin.free_ui(
                 ui,
-                &self.global_style,
+                self.global_style.clone(),
                 self.input.clone(),
                 self.response_pointerstate.clone(),
                 ui.max_rect(),
@@ -441,7 +443,7 @@ impl BunnyPlugin<'_> {
     fn menu_ui(
         &mut self,
         ui: &mut Ui,
-        style: &bunny_ui::style::Style,
+        style: RArc<bunny_ui::style::Style>,
         input: Input,
         response_pointerstate: RArc<PointerState>,
         available_space: Rect,
@@ -458,7 +460,7 @@ impl BunnyPlugin<'_> {
                 self.paint_list.clone(),
                 available_space,
                 ui.pixels_per_point(),
-                style.clone(),
+                style,
             );
 
             if collect_stats {
@@ -485,7 +487,7 @@ impl BunnyPlugin<'_> {
     fn free_ui(
         &mut self,
         ui: &mut Ui,
-        style: &bunny_ui::style::Style,
+        style: RArc<bunny_ui::style::Style>,
         input: Input,
         response_pointerstate: RArc<PointerState>,
         available_space: Rect,
@@ -502,7 +504,7 @@ impl BunnyPlugin<'_> {
                 self.paint_list.clone(),
                 available_space,
                 ui.pixels_per_point(),
-                style.clone(),
+                style,
             );
 
             if collect_stats {
