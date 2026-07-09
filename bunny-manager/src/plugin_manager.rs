@@ -120,6 +120,8 @@ impl<'a> PluginManager<'a> {
     }
 
     pub fn update_input(&mut self, ui: &mut Ui) {
+        // TODO add controller support
+
         let input_options = ui.options(|o| o.input_options);
         ui.input(|i| {
             self.input.collect(i, input_options.into());
