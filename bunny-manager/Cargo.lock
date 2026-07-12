@@ -265,7 +265,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "bunny-manager"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -289,6 +289,7 @@ dependencies = [
 [[package]]
 name = "bunny-plugin"
 version = "0.1.0"
+source = "git+https://github.com/Relial/bunny-plugin.git?tag=api-v2#6f3ea2be7a2c87b4ae4f16e509867032e026ed8e"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -300,6 +301,7 @@ dependencies = [
 [[package]]
 name = "bunny-ui"
 version = "0.2.0"
+source = "git+https://github.com/Relial/bunny-ui.git?tag=api-v2#3a1e198d4176cdcb3a81dd86e8d9b847ac146a52"
 dependencies = [
  "abi_stable",
  "anyhow",

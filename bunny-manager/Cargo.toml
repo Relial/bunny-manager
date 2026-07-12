@@ -1,6 +1,6 @@
 [package]
 name = "bunny-manager"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [lib]
@@ -11,7 +11,7 @@ anyhow = "1.0.103"
 egui = { version = "0.34.3", features = ["serde", "rayon"] }
 egui_extras = { version = "0.34.3", features = ["all_loaders"] }
 egui-d3d9 = { path = "../egui-d3d9" }
-bunny-plugin = { path = "../../bunny-plugin" }
+bunny-plugin = { git = "https://github.com/Relial/bunny-plugin.git", tag = "api-v2" }
 mimalloc = "0.1.52"
 retour = {version = "0.4.0-alpha.4", features = ["static-detour"]}
 tracing = "0.1.44"
