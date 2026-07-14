@@ -47,9 +47,9 @@ mod address;
 mod config;
 mod egui_hook;
 mod font;
+mod hooks;
 mod plugin_manager;
 mod ui;
-mod hooks;
 
 fn message_box_error(error: anyhow::Error) {
     let body = HSTRING::from(format!("{error:#}"));

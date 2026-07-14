@@ -28,6 +28,7 @@ use bunny_plugin::{
     hook::HookKind,
 };
 use egui::{Checkbox, CollapsingHeader, Id, Rect, TextWrapMode, Ui};
+use mhfz_structs::entity::Entity;
 use rapidhash::fast::RandomState;
 use tracing::{debug, error, info, warn};
 use windows::{
@@ -53,6 +54,7 @@ pub struct PluginManager<'a> {
     log_level: LogLevel,
     input: Input,
     response_pointerstate: RArc<PointerState>,
+    initial_plugin_load_done: bool,
 }
 
 impl<'a> PluginManager<'a> {
@@ -79,23 +81,38 @@ impl<'a> PluginManager<'a> {
             log_level,
             input: Default::default(),
             response_pointerstate: Default::default(),
+            initial_plugin_load_done: false,
         }
     }
 
+    #[inline]
+    pub fn initialized(&self) -> bool {
+        self.initial_plugin_load_done
+    }
+
+    #[inline]
+    pub fn ready_to_load(&self) -> bool {
+        self.addresses
+            .player()
+            .is_some_and(|player| player.exists())
+    }
+
     pub fn load_all(&mut self, manually_disabled: &HashSet<String>) {
-        let context = PluginContext::new(
-            self.addresses.mhfo_info,
-            self.dirs.configs_str.clone(),
-            self.fonts.clone(),
-            self.log_level,
-        );
+        info!("Loading plugins");
         for plugin in &mut self.plugins {
             if manually_disabled.contains(&plugin.file_name) {
                 info!("{} was manually disabled, skipping", &plugin.file_name);
                 continue;
             }
-            plugin.load(context.clone());
+            plugin.load(PluginContext::new(
+                self.addresses.mhfo_info,
+                self.dirs.configs_str.clone(),
+                self.fonts.clone(),
+                self.log_level,
+            ));
         }
+        self.initial_plugin_load_done = true;
+        info!("Loading done");
     }
 
     pub fn refresh(&mut self) {
@@ -134,6 +151,11 @@ impl<'a> PluginManager<'a> {
     }
 
     pub fn menu_ui(&mut self, ui: &mut Ui, config: &mut Config) {
+        if !self.initial_plugin_load_done {
+            ui.label("Waiting for character to fully load in");
+            ui.spinner();
+            return;
+        }
         for plugin in &mut self.plugins {
             ui.horizontal(|ui| {
                 ui.scope(|ui| {

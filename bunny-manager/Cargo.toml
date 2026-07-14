@@ -24,3 +24,4 @@ rapidhash = "4.5.1"
 image = "0.25.10"
 serde = "1.0.228"
 toml = "1.1.2"
+mhfz-structs = { git = "https://github.com/Relial/mhfz-structs.git", rev = "c70a2b17784c32069b59d9103aa3483361b5730b" }

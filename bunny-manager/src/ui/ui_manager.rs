@@ -45,8 +45,13 @@ impl egui_d3d9::App for UiManager<'_> {
             ui_init(ui.ctx(), &self.fonts);
             INIT.store(true, Ordering::Release);
         }
-        self.paint_cursor = false;
+        if !self.plugin_manager.initialized() && self.plugin_manager.ready_to_load() {
+            // Delaying the initial plugin loading to here solves a mystery HGE only crash that happens with some number of plugins loaded
+            self.plugin_manager
+                .load_all(&self.config.manually_disabled_plugins);
+        }
 
+        self.paint_cursor = false;
         self.plugin_manager.update_input(ui);
 
         ui.input_mut(|i| {
@@ -133,11 +138,8 @@ impl UiManager<'_> {
             .get()
             .expect("LOG_LEVEL must be initialized before UI manager init");
         let font_names = fonts.names().map(RString::from).collect();
-        let mut plugin_manager =
+        let plugin_manager =
             PluginManager::new(addresses, *log_level, creation_context, font_names);
-        info!("Loading plugins");
-        plugin_manager.load_all(&config.manually_disabled_plugins);
-        info!("Loading done");
 
         // If a user deletes a plugin and then later adds it back in, they probably want it to be loaded again.
         config.manually_disabled_plugins.retain(|disabled| {

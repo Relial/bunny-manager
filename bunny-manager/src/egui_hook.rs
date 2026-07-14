@@ -66,12 +66,11 @@ fn hk_present(
                     false,
                 );
                 debug!("EguiDx9 initialized. Calling SetWindowLongPtrA");
-                let o_wnd_proc: WNDPROC = transmute(SetWindowLongPtrA(
+                O_WND_PROC = Some(transmute::<i32, WNDPROC>(SetWindowLongPtrA(
                     hwnd,
                     GWLP_WNDPROC,
                     hk_wnd_proc as *const () as _,
-                ));
-                O_WND_PROC = Some(o_wnd_proc);
+                )));
                 debug!("All init done");
                 Mutex::new(egui)
             })
