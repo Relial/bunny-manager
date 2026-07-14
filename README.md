@@ -5,7 +5,7 @@ Plugins use [bunny-plugin](https://github.com/Relial/bunny-plugin)
 
 ## Usage
 
-Extract in the MHFZ game folder. dinput8.dll, d3d8.dll, and a plugins folder should be in the same folder as mhf.exe.
+Extract in the MHFZ game folder. dinput8.dll, d3d8.dll, and a plugins folder called "cardamom" should be in the same folder as mhf.exe.
 
 You should see a command prompt window when first launching the game.
 
