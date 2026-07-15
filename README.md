@@ -7,6 +7,8 @@ Plugins use [bunny-plugin](https://github.com/Relial/bunny-plugin)
 
 Extract in the MHFZ game folder. dinput8.dll, d3d8.dll, and a plugins folder called "cardamom" should be in the same folder as mhf.exe.
 
+If you'd like to use a different dinput8.dll (such as the one created by XInput Plus), rename that dinput8.dll to dinput8_c.dll before installing Bunny Manager. The dinput8.dll in your game folder should be from Bunny Manager, and the other one you want to use should be named dinput8_c.dll.
+
 You should see a command prompt window when first launching the game.
 
 ## Linux
