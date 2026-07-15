@@ -189,17 +189,19 @@ impl<'a> PluginManager<'a> {
                     }
                 });
                 if plugin.enabled() {
-                    CollapsingHeader::new(plugin.name_version()).show(ui, |ui| {
-                        plugin.menu_ui(
-                            ui,
-                            self.global_style.clone(),
-                            self.input.clone(),
-                            self.response_pointerstate.clone(),
-                            ui.max_rect(),
-                            config.collect_stats,
-                        );
-                        plugin.process_paint_list(ui);
-                    });
+                    CollapsingHeader::new(plugin.name_version())
+                        .id_salt(&plugin.file_name)
+                        .show(ui, |ui| {
+                            plugin.menu_ui(
+                                ui,
+                                self.global_style.clone(),
+                                self.input.clone(),
+                                self.response_pointerstate.clone(),
+                                ui.max_rect(),
+                                config.collect_stats,
+                            );
+                            plugin.process_paint_list(ui);
+                        });
                 } else {
                     ui.scope(|ui| {
                         ui.label(&plugin.file_name);
