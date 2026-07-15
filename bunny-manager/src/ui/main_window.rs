@@ -120,6 +120,7 @@ impl MainWindow {
         last_autosave: Instant,
     ) {
         ui.collapsing("Settings", |ui| {
+            ui.label(format!("v{}", env!("CARGO_PKG_VERSION")));
             ui.label("Background opacity");
             ui.add(egui::Slider::new(&mut config.opacity, 0..=100));
 
