@@ -10,7 +10,6 @@ use std::{
 
 use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::LogLevel;
-use mimalloc::MiMalloc;
 use tracing::{debug, error, info};
 use windows::{
     Win32::{
@@ -31,9 +30,6 @@ use crate::{
     address::{Addresses, find_addresses},
     egui_hook::APP,
 };
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
 
 pub const PLUGINS_DIR_NAME: &str = "bunny_plugins";
 pub const CONFIG_DIR_NAME: &str = "bunny_config";

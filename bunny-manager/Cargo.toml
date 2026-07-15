@@ -12,7 +12,6 @@ egui = { version = "0.34.3", features = ["serde", "rayon"] }
 egui_extras = { version = "0.34.3", features = ["all_loaders"] }
 egui-d3d9 = { path = "../egui-d3d9" }
 bunny-plugin = { git = "https://github.com/Relial/bunny-plugin.git", tag = "api-v2" }
-mimalloc = "0.1.52"
 retour = {version = "0.4.0-alpha.4", features = ["static-detour"]}
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"

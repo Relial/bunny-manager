@@ -1,7 +1,6 @@
 use std::{ffi::c_void, thread::sleep, time::Duration};
 
 use bunny_plugin::{GameMode, MhfoInfo};
-use mhfz_structs::player::{Player, PlayerInfo};
 use windows::{
     Win32::{Foundation::HWND, System::LibraryLoader::GetModuleHandleA},
     core::s,
@@ -16,8 +15,6 @@ pub struct Addresses {
     pub quest_update: usize,
     pub quest_ending_update: usize,
     pub quest_complete_update: usize,
-    player_structs: usize,
-    player_info: usize,
 }
 
 pub fn find_addresses() -> Addresses {
@@ -46,8 +43,6 @@ impl Addresses {
                 quest_update: dll + 0x880360,
                 quest_ending_update: dll + 0x880cd0,
                 quest_complete_update: dll + 0x8810b0,
-                player_structs: dll + 0x5033b90,
-                player_info: dll + 0x5bc830c,
             },
             GameMode::HighGrade => Self {
                 mhfo_info,
@@ -57,8 +52,6 @@ impl Addresses {
                 quest_update: dll + 0x89be10,
                 quest_ending_update: dll + 0x89c780,
                 quest_complete_update: dll + 0x89cb50,
-                player_structs: dll + 0xdc6b750,
-                player_info: dll + 0xe7fff3c,
             },
         }
     }
@@ -67,19 +60,5 @@ impl Addresses {
         let ptr = self.hwnd as *const usize;
         let v = unsafe { ptr.read() };
         HWND(v as *mut c_void)
-    }
-
-    fn player_info(&self) -> Option<PlayerInfo> {
-        let ptr = unsafe { (self.player_info as *mut *mut u8).read() };
-        PlayerInfo::new(ptr)
-    }
-
-    pub fn player(&self) -> Option<Player> {
-        let info = self.player_info()?;
-        let idx = info.player_struct_idx();
-        Some(Player::from_idx(
-            self.player_structs as *mut u8,
-            idx as usize,
-        ))
     }
 }
