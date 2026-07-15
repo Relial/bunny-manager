@@ -13,7 +13,7 @@ use egui::{
     load::TexturePoll,
     paint_texture_at,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 pub static INIT: AtomicBool = AtomicBool::new(false);
 
@@ -107,7 +107,7 @@ impl UiManager<'_> {
         let mut config = match Config::load(&config_path) {
             Ok(config) => config,
             Err(e) => {
-                error!(
+                warn!(
                     "Failed to load Bunny Manager config at {}: {e:#}",
                     config_path.display()
                 );
