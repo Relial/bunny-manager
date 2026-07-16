@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Frame, Id, ProgressBar, Response, Sense, Shadow,
-    TextWrapMode, Ui, scroll_area::ScrollSource, vec2,
+    Align2, Color32, CornerRadius, FontId, Frame, Id, Pos2, ProgressBar, Response, Sense, Shadow,
+    TextWrapMode, Ui, Vec2, scroll_area::ScrollSource, vec2,
 };
 
 use crate::{
@@ -18,12 +18,16 @@ use crate::{
 #[derive(Debug)]
 pub struct MainWindow {
     pub open: bool,
+    default_size: Vec2,
+    default_pos: Pos2,
 }
 
 impl MainWindow {
     pub fn new(config: &Config) -> Self {
         Self {
             open: config.open_on_startup,
+            default_size: config.window_size,
+            default_pos: config.window_position,
         }
     }
 
@@ -45,14 +49,24 @@ impl MainWindow {
             ))
             .shadow(Shadow::NONE)
             .stroke(ui.visuals().window_stroke);
+        let window_id = Id::new("Main Window");
         egui::Window::new("Bunny Manager")
-            .default_size([300.0, 500.0])
+            .id(window_id)
+            .default_size(self.default_size)
+            .default_pos(self.default_pos)
             .resizable([true, true])
             .frame(frame)
             .title_bar(false)
             .scroll(false)
             .show(ui, |ui| {
                 ui.take_available_space();
+                if config.remember_window_size_position {
+                    let window_rect = ui.max_rect();
+                    config.window_size = window_rect.size();
+                    // For whatever reason ui.max_rect()'s position is off by 1.0, 1.0 compared to what the window's default_pos() produces
+                    config.window_position = window_rect.left_top() - vec2(1.0, 1.0);
+                }
+
                 let style = ui.style_mut();
                 style.animation_time = 0.0;
                 style.wrap_mode = Some(TextWrapMode::Extend);
@@ -150,6 +164,15 @@ impl MainWindow {
                 &mut config.hide_cursor_outside_manager,
                 "Hide cursor outside manager window",
             );
+            if ui
+                .checkbox(
+                    &mut config.remember_window_size_position,
+                    "Remember window size and position",
+                )
+                .clicked()
+            {
+                config.reset_saved_size_pos();
+            }
 
             ui.separator();
 
