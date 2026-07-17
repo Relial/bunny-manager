@@ -7,11 +7,15 @@ Plugins use [bunny-plugin](https://github.com/Relial/bunny-plugin)
 
 Extract in the MHFZ game folder. dinput8.dll, d3d8.dll, and a plugins folder called "cardamom" should be in the same folder as mhf.exe.
 
-If you'd like to use a different dinput8.dll (such as the one created by XInput Plus), rename that dinput8.dll to dinput8_c.dll before installing Bunny Manager. The dinput8.dll in your game folder should be from Bunny Manager, and the other one you want to use should be named dinput8_c.dll.
+If you'd like to use a different dinput8.dll (such as the one created by XInput Plus), use the download with dsound in its name instead of the primary one.
+
+If you'd like to use both a different dinput8.dll and dsound.dll, rename one of them to dinput8_c.dll or dsound_c.dll and install the corresponding version of Bunny Manager.
 
 You should see a command prompt window when first launching the game.
 
 ## Linux
+
+Replace dinput8 in the overrides below with dsound if you downloaded the dsound version of the manager, but it's recommended to use the dinput8 version on Linux to avoid possible Wine dsound loading issues.
 
 Run with WINEDLLOVERRIDES="dinput8,d3d8=n,b"
 
