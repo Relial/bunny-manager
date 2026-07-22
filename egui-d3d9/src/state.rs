@@ -127,6 +127,7 @@ impl DxState {
 
             dev.SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID.0 as _)?;
             dev.SetRenderState(D3DRS_ZENABLE, false as _)?;
+            dev.SetRenderState(D3DRS_ZWRITEENABLE, false as _)?;
         }
         Ok(())
     }
@@ -225,7 +226,6 @@ fn setup_state(
 
         // set up render state
         dev.SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD.0 as _)?;
-        dev.SetRenderState(D3DRS_ZWRITEENABLE, false as _)?;
         dev.SetRenderState(D3DRS_ALPHATESTENABLE, false as _)?;
         dev.SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE.0 as _)?;
         dev.SetRenderState(D3DRS_ALPHABLENDENABLE, true as _)?;
