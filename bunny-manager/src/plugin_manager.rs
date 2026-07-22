@@ -51,11 +51,10 @@ pub struct PluginManager<'a> {
     global_style: RArc<bunny_ui::style::Style>,
     dirs: PluginDirs,
     pub addresses: Addresses,
-    fonts: RVec<RString>,
-    log_level: LogLevel,
     input: Input,
     response_pointerstate: RArc<PointerState>,
     bunny3d: Option<Bunny3dBackend>,
+    plugin_context: PluginContext,
 }
 
 impl<'a> PluginManager<'a> {
@@ -81,16 +80,22 @@ impl<'a> PluginManager<'a> {
                 None
             }
         };
+
+        let plugin_context = PluginContext::new(
+            addresses.mhfo_info,
+            dirs.configs.to_string_lossy(),
+            fonts,
+            log_level,
+        );
         Self {
             plugins,
             global_style,
             dirs,
             addresses,
-            fonts,
-            log_level,
             input: Default::default(),
             response_pointerstate: Default::default(),
             bunny3d,
+            plugin_context,
         }
     }
 
@@ -100,12 +105,7 @@ impl<'a> PluginManager<'a> {
                 info!("{} was manually disabled, skipping", &plugin.file_name);
                 continue;
             }
-            plugin.load(PluginContext::new(
-                self.addresses.mhfo_info,
-                self.dirs.configs.to_string_lossy(),
-                self.fonts.clone(),
-                self.log_level,
-            ));
+            plugin.load(&self.plugin_context);
         }
     }
 
@@ -113,15 +113,9 @@ impl<'a> PluginManager<'a> {
         if let Ok(new_plugins) = find_plugins(&self.dirs) {
             self.plugins
                 .retain(|existing_plugin| new_plugins.contains(existing_plugin));
-            let context = PluginContext::new(
-                self.addresses.mhfo_info,
-                self.dirs.configs.to_string_lossy(),
-                self.fonts.clone(),
-                self.log_level,
-            );
             for mut plugin in new_plugins {
                 if !self.plugins.contains(&plugin) {
-                    plugin.load(context.clone());
+                    plugin.load(&self.plugin_context);
                     self.plugins.push(plugin);
                 }
             }
@@ -163,12 +157,7 @@ impl<'a> PluginManager<'a> {
                         }
                         PluginStatus::Unloaded | PluginStatus::UnloadedStillBusy => {
                             if ui.add(Checkbox::without_text(&mut false)).clicked() {
-                                plugin.load(PluginContext::new(
-                                    self.addresses.mhfo_info,
-                                    self.dirs.configs.to_string_lossy(),
-                                    self.fonts.clone(),
-                                    self.log_level,
-                                ));
+                                plugin.load(&self.plugin_context);
                                 config.manually_disabled_plugins.remove(&plugin.file_name);
                             }
                         }
@@ -266,7 +255,7 @@ impl<'a> PluginManager<'a> {
     }
 }
 
-type FnPluginInit = unsafe extern "C" fn(PluginContext) -> PluginInfo;
+type FnPluginInit = unsafe extern "C" fn(&PluginContext) -> PluginInfo;
 
 fn find_init(module: HMODULE) -> Result<FnPluginInit> {
     unsafe {
@@ -312,7 +301,7 @@ impl BunnyPlugin<'_> {
         }
     }
 
-    fn load(&mut self, plugin_context: PluginContext) {
+    fn load(&mut self, plugin_context: &PluginContext) {
         if self.unload_failed.load(Ordering::Acquire) {
             error!(
                 "{} failed to unload, so it can't be loaded again. Please restart the game.",
