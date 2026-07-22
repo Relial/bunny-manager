@@ -1,7 +1,6 @@
 use std::{ffi::c_void, thread::sleep, time::Duration};
 
-use bunny_3d::Matrix4x4;
-use bunny_plugin::{GameMode, MhfoInfo};
+use bunny_plugin::{GameMode, MhfoInfo, bunny_3d::Matrix4x4};
 use windows::{
     Win32::{Foundation::HWND, System::LibraryLoader::GetModuleHandleA},
     core::s,

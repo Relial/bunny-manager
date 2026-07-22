@@ -16,9 +16,9 @@ use abi_stable::{
     std_types::{RArc, RHashMap, RString, RVec},
 };
 use anyhow::{Context as _, Result, anyhow};
-use bunny_3d::backend::Bunny3dBackend;
 use bunny_plugin::{
     LogLevel, PluginContext, PluginInfo,
+    bunny_3d::{backend::Bunny3dBackend, core::Bunny3d, core_texture::TextureId},
     bunny_ui::{
         self,
         input_state::{Input, PointerState},
@@ -155,7 +155,7 @@ impl<'a> PluginManager<'a> {
                         | PluginStatus::LoadedIncompatible
                         | PluginStatus::LoadedWrongApiVersion(_) => {
                             if ui.add(Checkbox::without_text(&mut true)).clicked() {
-                                plugin.unload();
+                                plugin.unload(self.bunny3d.as_mut());
                                 config
                                     .manually_disabled_plugins
                                     .insert(plugin.file_name.clone());
@@ -246,10 +246,15 @@ impl<'a> PluginManager<'a> {
     }
 
     pub fn free_draw(&mut self, device: &IDirect3DDevice9) -> Result<()> {
-        let view_matrix = self.addresses.view_matrix();
-        let projection_matrix = self.addresses.projection_matrix();
-        if let Some(b) = &mut self.bunny3d {
-
+        if let Some(backend) = &mut self.bunny3d {
+            backend.start_frame();
+            let view_matrix = self.addresses.view_matrix();
+            let projection_matrix = self.addresses.projection_matrix();
+            for plugin in &mut self.plugins {
+                plugin.bunny3d(&mut backend.data);
+                backend.allocate_textures(device, &mut plugin.allocated_textures)?;
+            }
+            backend.draw(device, view_matrix, projection_matrix)?;
         }
         Ok(())
     }
@@ -262,42 +267,13 @@ impl<'a> PluginManager<'a> {
 }
 
 type FnPluginInit = unsafe extern "C" fn(PluginContext) -> PluginInfo;
-type FnPluginMenu = unsafe extern "C" fn(&mut BunnyUi);
-type FnPluginUi = unsafe extern "C" fn(&mut BunnyUi);
-type FnPluginSave = unsafe extern "C" fn();
 
-#[derive(Clone, Copy)]
-struct PluginFuncs {
-    init: FnPluginInit,
-    menu_ui: FnPluginMenu,
-    free_ui: FnPluginUi,
-    save: FnPluginSave,
-}
-
-impl PluginFuncs {
-    fn new(module: HMODULE) -> Result<Self> {
-        unsafe {
-            let raw_init = GetProcAddress(module, s!("init"))
-                .ok_or(anyhow!("plugin function 'init' not found"))?;
-            let raw_menu = GetProcAddress(module, s!("menu"))
-                .ok_or(anyhow!("plugin function 'menu' not found"))?;
-            let raw_ui = GetProcAddress(module, s!("ui"))
-                .ok_or(anyhow!("plugin function 'ui' not found"))?;
-            let raw_save = GetProcAddress(module, s!("save"))
-                .ok_or(anyhow!("plugin function 'save' not found"))?;
-
-            let init: FnPluginInit = transmute(raw_init);
-            let menu_ui: FnPluginMenu = transmute(raw_menu);
-            let free_ui: FnPluginUi = transmute(raw_ui);
-            let save: FnPluginSave = transmute(raw_save);
-
-            Ok(Self {
-                init,
-                menu_ui,
-                free_ui,
-                save,
-            })
-        }
+fn find_init(module: HMODULE) -> Result<FnPluginInit> {
+    unsafe {
+        let raw =
+            GetProcAddress(module, s!("init")).ok_or(anyhow!("Plugin init function not found"))?;
+        let f: FnPluginInit = transmute(raw);
+        Ok(f)
     }
 }
 
@@ -306,7 +282,7 @@ struct BunnyPlugin<'a> {
     status: PluginStatus,
     info: Option<PluginInfo>,
     stats: PluginStats,
-    funcs: Option<PluginFuncs>,
+    init_func: Option<FnPluginInit>,
     module_handle: Option<usize>,
     plugin_path: PathBuf,
     paint_list: RArc<RRwLock<PaintList<'a>>>,
@@ -314,6 +290,7 @@ struct BunnyPlugin<'a> {
     free_responses: Option<RArc<RHashMap<Id, Response, RandomState>>>,
     save_lock: Arc<Mutex<()>>,
     unload_failed: Arc<AtomicBool>,
+    allocated_textures: Vec<TextureId>,
 }
 
 impl BunnyPlugin<'_> {
@@ -323,7 +300,7 @@ impl BunnyPlugin<'_> {
             status: PluginStatus::Unloaded,
             info: None,
             stats: PluginStats::default(),
-            funcs: None,
+            init_func: None,
             module_handle: None,
             plugin_path,
             paint_list: RArc::new(RRwLock::new(PaintList::new())),
@@ -331,6 +308,7 @@ impl BunnyPlugin<'_> {
             free_responses: None,
             save_lock: Arc::new(Mutex::new(())),
             unload_failed: Arc::new(AtomicBool::new(false)),
+            allocated_textures: Default::default(),
         }
     }
 
@@ -354,17 +332,17 @@ impl BunnyPlugin<'_> {
             Ok(module) => {
                 self.module_handle = Some(module.0 as usize);
                 info!("{} loaded", &self.file_name);
-                match PluginFuncs::new(module) {
-                    Ok(funcs) => match get_plugin_api_version(module) {
+                match find_init(module) {
+                    Ok(init) => match get_plugin_api_version(module) {
                         Ok(plugin_api_ver) => {
                             if plugin_api_ver == bunny_plugin::BUNNY_API_VERSION {
-                                let info = unsafe { (funcs.init)(plugin_context) };
+                                let info = unsafe { init(plugin_context) };
                                 if let Err(e) = info.init() {
                                     warn!("{} failed to initialize: {e:#}", info.name());
                                     self.status = PluginStatus::LoadedInitFailed(format!("{e:#}"));
                                 } else {
                                     self.info = Some(info);
-                                    self.funcs = Some(funcs);
+                                    self.init_func = Some(init);
                                     self.status = PluginStatus::Enabled;
                                 }
                             } else {
@@ -402,20 +380,22 @@ impl BunnyPlugin<'_> {
     }
 
     fn save(&self) -> Option<JoinHandle<()>> {
-        self.funcs.map(|f| {
-            let save = f.save;
-            let lock = self.save_lock.clone();
-            std::thread::spawn(move || unsafe {
-                {
-                    if let Ok(_guard) = lock.try_lock() {
-                        save();
+        self.info
+            .as_ref()
+            .and_then(|i| i.hooks.save())
+            .map(|save_func| {
+                let lock = self.save_lock.clone();
+                std::thread::spawn(move || unsafe {
+                    {
+                        if let Ok(_guard) = lock.try_lock() {
+                            save_func();
+                        }
                     }
-                }
+                })
             })
-        })
     }
 
-    fn unload(&mut self) -> Option<JoinHandle<()>> {
+    fn unload(&mut self, bunny3d: Option<&mut Bunny3dBackend>) -> Option<JoinHandle<()>> {
         let thread_handle = self.module_handle.map(|handle| {
             let lock = self.save_lock.clone();
             let fail_indicator = self.unload_failed.clone();
@@ -437,13 +417,21 @@ impl BunnyPlugin<'_> {
             })
         });
 
-        self.funcs = None;
+        self.init_func = None;
         self.info = None;
         self.module_handle = None;
         self.menu_responses = None;
         self.free_responses = None;
         self.paint_list.write().clear();
         self.status = PluginStatus::Unloaded;
+        if let Some(b) = bunny3d {
+            for texture in &self.allocated_textures {
+                if !b.free_texture(*texture) {
+                    warn!("Tried to free texture {} but it wasn't allocated", texture);
+                }
+            }
+        }
+        self.allocated_textures.clear();
 
         thread_handle
     }
@@ -477,7 +465,7 @@ impl BunnyPlugin<'_> {
         available_space: Rect,
         collect_stats: bool,
     ) {
-        if let Some(funcs) = self.funcs {
+        if let Some(ui_menu) = self.info.as_ref().and_then(|i| i.hooks.ui_menu()) {
             let responses = self
                 .menu_responses
                 .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
@@ -494,7 +482,7 @@ impl BunnyPlugin<'_> {
             if collect_stats {
                 self.stats.menu_timings().start();
             }
-            unsafe { (funcs.menu_ui)(&mut bunny_ui) };
+            unsafe { ui_menu(&mut bunny_ui) };
 
             let mut new =
                 RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
@@ -521,7 +509,7 @@ impl BunnyPlugin<'_> {
         available_space: Rect,
         collect_stats: bool,
     ) {
-        if let Some(funcs) = self.funcs {
+        if let Some(ui_free) = self.info.as_ref().and_then(|i| i.hooks.ui_free()) {
             let responses = self
                 .free_responses
                 .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
@@ -538,7 +526,7 @@ impl BunnyPlugin<'_> {
             if collect_stats {
                 self.stats.ui_timings().start();
             }
-            unsafe { (funcs.free_ui)(&mut bunny_ui) };
+            unsafe { ui_free(&mut bunny_ui) };
 
             let mut new =
                 RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
@@ -553,6 +541,12 @@ impl BunnyPlugin<'_> {
             if collect_stats {
                 self.stats.ui_timings().end();
             }
+        }
+    }
+
+    fn bunny3d(&mut self, bunny3d: &mut Bunny3d) {
+        if let Some(f) = self.info.as_ref().and_then(|i| i.hooks.bunny3d()) {
+            unsafe { f(bunny3d) }
         }
     }
 }

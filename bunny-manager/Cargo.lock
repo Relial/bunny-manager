@@ -837,7 +837,6 @@ version = "0.2.4"
 dependencies = [
  "abi_stable",
  "anyhow",
- "bunny-3d",
  "bunny-plugin",
  "egui",
  "egui-d3d9",
