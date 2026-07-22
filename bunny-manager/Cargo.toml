@@ -11,7 +11,7 @@ anyhow = "1.0.103"
 egui = { version = "0.34.3", features = ["serde", "rayon"] }
 egui_extras = { version = "0.34.3", features = ["all_loaders"] }
 egui-d3d9 = { path = "../egui-d3d9" }
-bunny-plugin = { git = "https://github.com/Relial/bunny-plugin.git", tag = "api-v2" }
+bunny-plugin = { path = "../../bunny-plugin" }
 retour = {version = "0.4.0-alpha.4", features = ["static-detour"]}
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
@@ -20,7 +20,7 @@ abi_stable = "0.11.3"
 ilhook = { version = "2.3.0", default-features = false, features = ["x86"] }
 jiff = "0.2.31"
 rapidhash = "4.5.1"
-image = "0.25.10"
 serde = "1.0.228"
 toml = "1.1.2"
 mhfz-structs = { git = "https://github.com/Relial/mhfz-structs.git", rev = "c70a2b17784c32069b59d9103aa3483361b5730b" }
+bunny-3d = { path = "../../bunny-3d" }

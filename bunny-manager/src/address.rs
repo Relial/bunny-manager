@@ -1,5 +1,6 @@
 use std::{ffi::c_void, thread::sleep, time::Duration};
 
+use bunny_3d::Matrix4x4;
 use bunny_plugin::{GameMode, MhfoInfo};
 use windows::{
     Win32::{Foundation::HWND, System::LibraryLoader::GetModuleHandleA},
@@ -15,6 +16,8 @@ pub struct Addresses {
     pub quest_update: usize,
     pub quest_ending_update: usize,
     pub quest_complete_update: usize,
+    view_matrix: usize,
+    projection_matrix: usize,
 }
 
 pub fn find_addresses() -> Addresses {
@@ -43,6 +46,8 @@ impl Addresses {
                 quest_update: dll + 0x880360,
                 quest_ending_update: dll + 0x880cd0,
                 quest_complete_update: dll + 0x8810b0,
+                view_matrix: dll + 0x5c47360,
+                projection_matrix: dll + 0x5c47320,
             },
             GameMode::HighGrade => Self {
                 mhfo_info,
@@ -52,6 +57,8 @@ impl Addresses {
                 quest_update: dll + 0x89be10,
                 quest_ending_update: dll + 0x89c780,
                 quest_complete_update: dll + 0x89cb50,
+                view_matrix: dll + 0xe87ef90,
+                projection_matrix: dll + 0xe87ef50,
             },
         }
     }
@@ -60,5 +67,13 @@ impl Addresses {
         let ptr = self.hwnd as *const usize;
         let v = unsafe { ptr.read() };
         HWND(v as *mut c_void)
+    }
+
+    pub fn view_matrix(&self) -> Matrix4x4 {
+        unsafe { (self.view_matrix as *const Matrix4x4).read() }
+    }
+
+    pub fn projection_matrix(&self) -> Matrix4x4 {
+        unsafe { (self.projection_matrix as *const Matrix4x4).read() }
     }
 }

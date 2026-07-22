@@ -62,7 +62,7 @@ fn hk_present(
                 let egui = EguiDx9::init(
                     &device,
                     hwnd,
-                    |creation_context| UiManager::new(creation_context, *addresses),
+                    |creation_context| UiManager::new(creation_context, *addresses, &device),
                     false,
                 );
                 debug!("EguiDx9 initialized. Calling SetWindowLongPtrA");
@@ -76,6 +76,7 @@ fn hk_present(
             })
             .lock()
             .unwrap();
+
         let collect_stats = app.state().collect_stats();
         if collect_stats {
             app.state_mut().stats.frame_start();

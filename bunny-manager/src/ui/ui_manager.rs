@@ -14,6 +14,7 @@ use egui::{
     paint_texture_at,
 };
 use tracing::{debug, error, info, warn};
+use windows::Win32::Graphics::Direct3D9::IDirect3DDevice9;
 
 pub static INIT: AtomicBool = AtomicBool::new(false);
 
@@ -99,10 +100,24 @@ impl egui_d3d9::App for UiManager<'_> {
             paint_cursor(pointer_pos, ui);
         }
     }
+
+    fn free_draw(&mut self, device: &IDirect3DDevice9) {
+        if let Err(e) = self.plugin_manager.free_draw(device) {
+            panic!("Bunny3D draw error: {e:#}");
+        }
+    }
+
+    fn free_draw_reset(&mut self) {
+        self.plugin_manager.free_draw_reset();
+    }
 }
 
 impl UiManager<'_> {
-    pub fn new(creation_context: &egui::Context, addresses: Addresses) -> Self {
+    pub fn new(
+        creation_context: &egui::Context,
+        addresses: Addresses,
+        device: &IDirect3DDevice9,
+    ) -> Self {
         let config_path = get_config_path();
         let mut config = match Config::load(&config_path) {
             Ok(config) => config,
@@ -133,7 +148,7 @@ impl UiManager<'_> {
             .expect("LOG_LEVEL must be initialized before UI manager init");
         let font_names = fonts.names().map(RString::from).collect();
         let mut plugin_manager =
-            PluginManager::new(addresses, *log_level, creation_context, font_names);
+            PluginManager::new(addresses, *log_level, creation_context, font_names, device);
         info!("Loading plugins");
         plugin_manager.load_all(&config.manually_disabled_plugins);
         info!("Loading done");

@@ -16,6 +16,7 @@ use abi_stable::{
     std_types::{RArc, RHashMap, RString, RVec},
 };
 use anyhow::{Context as _, Result, anyhow};
+use bunny_3d::backend::Bunny3dBackend;
 use bunny_plugin::{
     LogLevel, PluginContext, PluginInfo,
     bunny_ui::{
@@ -33,6 +34,7 @@ use tracing::{debug, error, info, warn};
 use windows::{
     Win32::{
         Foundation::{FreeLibrary, HMODULE},
+        Graphics::Direct3D9::IDirect3DDevice9,
         System::LibraryLoader::{GetProcAddress, LoadLibraryW},
     },
     core::{HSTRING, s},
@@ -48,11 +50,12 @@ pub struct PluginManager<'a> {
     plugins: Vec<BunnyPlugin<'a>>,
     global_style: RArc<bunny_ui::style::Style>,
     dirs: PluginDirs,
-    addresses: Addresses,
+    pub addresses: Addresses,
     fonts: RVec<RString>,
     log_level: LogLevel,
     input: Input,
     response_pointerstate: RArc<PointerState>,
+    bunny3d: Option<Bunny3dBackend>,
 }
 
 impl<'a> PluginManager<'a> {
@@ -61,6 +64,7 @@ impl<'a> PluginManager<'a> {
         log_level: LogLevel,
         creation_context: &egui::Context,
         fonts: RVec<RString>,
+        device: &IDirect3DDevice9,
     ) -> Self {
         let dirs = PluginDirs::new();
         let plugins = find_plugins(&dirs).unwrap_or_else(|e| {
@@ -70,6 +74,13 @@ impl<'a> PluginManager<'a> {
         let global_style = RArc::new(bunny_ui::style::Style::from_egui(
             &creation_context.global_style(),
         ));
+        let bunny3d = match Bunny3dBackend::new(device) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                error!("Failed to initialize Bunny3D: {e:#}");
+                None
+            }
+        };
         Self {
             plugins,
             global_style,
@@ -79,6 +90,7 @@ impl<'a> PluginManager<'a> {
             log_level,
             input: Default::default(),
             response_pointerstate: Default::default(),
+            bunny3d,
         }
     }
 
@@ -226,10 +238,25 @@ impl<'a> PluginManager<'a> {
         for callback in self
             .plugins
             .iter()
-            .filter_map(|p| p.info.as_ref().map(|i| i.hooks.callback(kind)))
+            .filter_map(|p| p.info.as_ref().map(|i| i.hooks.hook_callback(kind)))
             .flatten()
         {
             unsafe { callback() };
+        }
+    }
+
+    pub fn free_draw(&mut self, device: &IDirect3DDevice9) -> Result<()> {
+        let view_matrix = self.addresses.view_matrix();
+        let projection_matrix = self.addresses.projection_matrix();
+        if let Some(b) = &mut self.bunny3d {
+
+        }
+        Ok(())
+    }
+
+    pub fn free_draw_reset(&mut self) {
+        if let Some(b) = &mut self.bunny3d {
+            b.reset();
         }
     }
 }
