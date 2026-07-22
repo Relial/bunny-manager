@@ -18,7 +18,10 @@ use abi_stable::{
 use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::{
     LogLevel, PluginContext, PluginInfo,
-    bunny_3d::{backend::Bunny3dBackend, core::Bunny3d, core_texture::TextureId},
+    bunny_3d::{
+        backend::Bunny3dBackend,
+        core::{Bunny3d, texture::TextureId},
+    },
     bunny_ui::{
         self,
         input_state::{Input, PointerState},
@@ -227,8 +230,7 @@ impl<'a> PluginManager<'a> {
         for callback in self
             .plugins
             .iter()
-            .filter_map(|p| p.info.as_ref().map(|i| i.hooks.hook_callback(kind)))
-            .flatten()
+            .filter_map(|p| p.info.as_ref().and_then(|i| i.hooks.hook_callback(kind)))
         {
             unsafe { callback() };
         }
@@ -385,6 +387,8 @@ impl BunnyPlugin<'_> {
     }
 
     fn unload(&mut self, bunny3d: Option<&mut Bunny3dBackend>) -> Option<JoinHandle<()>> {
+        self.status = PluginStatus::Unloaded;
+
         let thread_handle = self.module_handle.map(|handle| {
             let lock = self.save_lock.clone();
             let fail_indicator = self.unload_failed.clone();
@@ -412,7 +416,6 @@ impl BunnyPlugin<'_> {
         self.menu_responses = None;
         self.free_responses = None;
         self.paint_list.write().clear();
-        self.status = PluginStatus::Unloaded;
         if let Some(b) = bunny3d {
             for texture in &self.allocated_textures {
                 if !b.free_texture(*texture) {
