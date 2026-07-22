@@ -70,7 +70,7 @@ impl<T: App> EguiDx9<T> {
             last_idx_capacity: 0,
             last_vtx_capacity: 0,
             should_reset: false,
-            skip_frame: 2,
+            skip_frame: 10,
         }
     }
 
@@ -79,7 +79,7 @@ impl<T: App> EguiDx9<T> {
         self.tex_man.deallocate_textures();
 
         self.should_reset = true;
-        self.skip_frame = 2;
+        self.skip_frame = 10;
     }
 
     pub fn present(&mut self, dev: &IDirect3DDevice9) {
