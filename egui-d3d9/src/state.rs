@@ -128,6 +128,7 @@ impl DxState {
             dev.SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID.0 as _)?;
             dev.SetRenderState(D3DRS_ZENABLE, false as _)?;
             dev.SetRenderState(D3DRS_ZWRITEENABLE, false as _)?;
+            dev.SetRenderState(D3DRS_SCISSORTESTENABLE, true as _)?;
         }
         Ok(())
     }
@@ -236,7 +237,6 @@ fn setup_state(
         dev.SetRenderState(D3DRS_BLENDOPALPHA, D3DBLENDOP_ADD.0 as _)?;
         dev.SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE.0 as _)?;
         dev.SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA.0 as _)?;
-        dev.SetRenderState(D3DRS_SCISSORTESTENABLE, true as _)?;
         dev.SetRenderState(D3DRS_FOGENABLE, false as _)?;
         dev.SetRenderState(D3DRS_RANGEFOGENABLE, false as _)?;
         dev.SetRenderState(D3DRS_SPECULARENABLE, false as _)?;
