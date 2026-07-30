@@ -236,16 +236,15 @@ impl<'a> PluginManager<'a> {
         }
     }
 
-    pub fn free_draw(&mut self, device: &IDirect3DDevice9) -> Result<()> {
+    pub fn free_draw(&mut self) -> Result<()> {
         if let Some(backend) = &mut self.bunny3d {
+            let device = unsafe { &*self.addresses.d3d9_device() };
             backend.start_frame();
-            let view_matrix = self.addresses.view_matrix();
-            let projection_matrix = self.addresses.projection_matrix();
             for plugin in &mut self.plugins {
                 plugin.bunny3d(&mut backend.data);
                 backend.allocate_textures(device, &mut plugin.allocated_textures)?;
             }
-            backend.draw(device, view_matrix, projection_matrix)?;
+            backend.draw(device)?;
         }
         Ok(())
     }

@@ -101,8 +101,8 @@ impl egui_d3d9::App for UiManager<'_> {
         }
     }
 
-    fn free_draw(&mut self, device: &IDirect3DDevice9) {
-        if let Err(e) = self.plugin_manager.free_draw(device) {
+    fn free_draw(&mut self) {
+        if let Err(e) = self.plugin_manager.free_draw() {
             panic!("Bunny3D draw error: {e:#}");
         }
     }

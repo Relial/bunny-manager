@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bunny_plugin::hook::HookKind;
+use egui_d3d9::App;
 use ilhook::x86::{CallbackOption, HookFlags, HookPoint, HookType, Hooker, Registers};
 use tracing::debug;
 
@@ -93,11 +94,33 @@ fn hook_quest_complete_update(addresses: &Addresses) -> Result<HookPoint> {
     Ok(hook_point)
 }
 
+unsafe extern "cdecl" fn on_rendering(_: *mut Registers, _: usize) {
+    if let Some(m) = APP.get() {
+        let mut app = m.lock().unwrap();
+        app.state_mut().free_draw();
+    }
+}
+
+fn hook_rendering(addresses: &Addresses) -> Result<HookPoint> {
+    let hook_address = addresses.rendering_stuff;
+    let builder = Hooker::new(
+        hook_address,
+        HookType::JmpBack(on_rendering),
+        CallbackOption::None,
+        0,
+        HookFlags::empty(),
+    );
+    let hook_point = unsafe { builder.hook() }?;
+    debug!("Hooked rendering stuff at {:#x}", hook_address);
+    Ok(hook_point)
+}
+
 pub fn init(addresses: &Addresses) -> Result<Vec<HookPoint>> {
     Ok(vec![
         hook_lobby_update(addresses)?,
         hook_quest_update(addresses)?,
         hook_quest_ending_update(addresses)?,
         hook_quest_complete_update(addresses)?,
+        hook_rendering(addresses)?,
     ])
 }

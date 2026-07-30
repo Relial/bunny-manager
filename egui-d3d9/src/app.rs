@@ -15,7 +15,7 @@ use crate::{
 
 pub trait App {
     fn ui(&mut self, ui: &mut Ui);
-    fn free_draw(&mut self, device: &IDirect3DDevice9);
+    fn free_draw(&mut self);
     fn free_draw_reset(&mut self);
 }
 
@@ -119,9 +119,6 @@ impl<T: App> EguiDx9<T> {
             if !output.textures_delta.is_empty() {
                 self.tex_man.process_free_deltas(&output.textures_delta);
             }
-
-            let _state = DxState::setup(dev, self.get_viewport());
-            self.ui_state.free_draw(dev);
             return;
         }
 
@@ -164,10 +161,7 @@ impl<T: App> EguiDx9<T> {
         // back up our state so we don't mess with the game and the game doesn't mess with us.
         // i actually had the idea to use BeginStateBlock and co. to "cache" the state we set every frame,
         // and just re-applying it everytime. just setting this manually takes around 50 microseconds on my machine.
-        let state = DxState::setup(dev, self.get_viewport());
-
-        self.ui_state.free_draw(dev);
-        expect!(state.post_plugin_setup(), "unable to set post plugin state");
+        let _state = DxState::setup(dev, self.get_viewport());
 
         unsafe {
             expect!(

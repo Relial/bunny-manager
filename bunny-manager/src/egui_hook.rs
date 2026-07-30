@@ -150,9 +150,9 @@ pub fn hook(hwnd: HWND) -> Result<()> {
         )
     };
     let reset = vtable[16];
-    debug!("Found reset at {:X?}", reset);
+    debug!("Found Reset at {:X?}", reset);
     let present = vtable[17];
-    debug!("Found present at {:X?}", present);
+    debug!("Found Present at {:X?}", present);
     unsafe {
         let present: FnPresent = transmute(present);
         let reset: FnReset = transmute(reset);

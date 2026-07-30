@@ -2,7 +2,10 @@ use std::{ffi::c_void, thread::sleep, time::Duration};
 
 use bunny_plugin::{GameMode, MhfoInfo, bunny_3d::Matrix4x4};
 use windows::{
-    Win32::{Foundation::HWND, System::LibraryLoader::GetModuleHandleA},
+    Win32::{
+        Foundation::HWND, Graphics::Direct3D9::IDirect3DDevice9,
+        System::LibraryLoader::GetModuleHandleA,
+    },
     core::s,
 };
 
@@ -17,6 +20,8 @@ pub struct Addresses {
     pub quest_complete_update: usize,
     view_matrix: usize,
     projection_matrix: usize,
+    pub rendering_stuff: usize,
+    d3d_device: usize,
 }
 
 pub fn find_addresses() -> Addresses {
@@ -47,6 +52,8 @@ impl Addresses {
                 quest_complete_update: dll + 0x8810b0,
                 view_matrix: dll + 0x5c47360,
                 projection_matrix: dll + 0x5c47320,
+                rendering_stuff: dll + 0xb5c630,
+                d3d_device: dll + 0x5bd9e0c,
             },
             GameMode::HighGrade => Self {
                 mhfo_info,
@@ -58,6 +65,8 @@ impl Addresses {
                 quest_complete_update: dll + 0x89cb50,
                 view_matrix: dll + 0xe87ef90,
                 projection_matrix: dll + 0xe87ef50,
+                rendering_stuff: dll + 0xb7af3a,
+                d3d_device: dll + 0xe811a3c,
             },
         }
     }
@@ -74,5 +83,15 @@ impl Addresses {
 
     pub fn projection_matrix(&self) -> Matrix4x4 {
         unsafe { (self.projection_matrix as *const Matrix4x4).read() }
+    }
+
+    pub fn d3d9_device(&self) -> *const IDirect3DDevice9 {
+        match self.mhfo_info.game_mode {
+            GameMode::LowGrade => {
+                let proxy = unsafe { (self.d3d_device as *const *const u8).read() };
+                proxy.wrapping_byte_add(0xc) as *const IDirect3DDevice9
+            }
+            GameMode::HighGrade => self.d3d_device as *const IDirect3DDevice9,
+        }
     }
 }

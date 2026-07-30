@@ -25,7 +25,6 @@ pub struct DxState {
     original_proj: Matrix4x4,
     backbuffer: IDirect3DSurface9,
     dev: IDirect3DDevice9,
-    viewport: D3DVIEWPORT9,
 }
 
 impl DxState {
@@ -68,7 +67,7 @@ impl DxState {
             );
 
             // set our desired state
-            expect!(setup_state(dev, &viewport), "unable to setup state");
+            expect!(setup_state(dev, viewport), "unable to setup state");
 
             Self {
                 original_state,
@@ -77,60 +76,8 @@ impl DxState {
                 original_proj,
                 backbuffer,
                 dev: dev.clone(),
-                viewport,
             }
         }
-    }
-
-    pub fn post_plugin_setup(&self) -> Result<(), Box<dyn std::error::Error>> {
-        unsafe {
-            let dev = &self.dev;
-
-            dev.SetFVF(FVF_CUSTOMVERTEX)?;
-
-            // set up matrix
-            let l = 0.5;
-            let r = self.viewport.Width as f32 + 0.5;
-            let t = 0.5;
-            let b = self.viewport.Height as f32 + 0.5;
-
-            let mat_ident = Matrix4x4 {
-                M11: 1.0,
-                M22: 1.0,
-                M33: 1.0,
-                M44: 1.0,
-                ..Default::default()
-            };
-
-            let mat_proj = Matrix4x4 {
-                M11: 2.0 / (r - l),
-                M12: 0.0,
-                M13: 0.0,
-                M14: 0.0,
-                M21: 0.0,
-                M22: 2.0 / (t - b),
-                M23: 0.0,
-                M24: 0.0,
-                M31: 0.0,
-                M32: 0.0,
-                M33: 0.5,
-                M34: 0.0,
-                M41: (l + r) / (l - r),
-                M42: (t + b) / (b - t),
-                M43: 0.5,
-                M44: 1.0,
-            };
-
-            dev.SetTransform(D3DTRANSFORMSTATETYPE(256), &mat_ident)?;
-            dev.SetTransform(D3DTS_VIEW, &mat_ident)?;
-            dev.SetTransform(D3DTS_PROJECTION, &mat_proj)?;
-
-            dev.SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID.0 as _)?;
-            dev.SetRenderState(D3DRS_ZENABLE, false as _)?;
-            dev.SetRenderState(D3DRS_ZWRITEENABLE, false as _)?;
-            dev.SetRenderState(D3DRS_SCISSORTESTENABLE, true as _)?;
-        }
-        Ok(())
     }
 }
 
@@ -185,7 +132,7 @@ impl Drop for DxState {
 
 fn setup_state(
     dev: &IDirect3DDevice9,
-    viewport: &D3DVIEWPORT9,
+    viewport: D3DVIEWPORT9,
 ) -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         // general set up
@@ -219,14 +166,55 @@ fn setup_state(
             D3DTEXF_NONE,
         )?;
 
-        dev.SetViewport(viewport)?;
+        dev.SetViewport(&viewport)?;
 
         // set up fvf
         dev.SetPixelShader(None)?;
         dev.SetVertexShader(None)?;
+        dev.SetFVF(FVF_CUSTOMVERTEX)?;
+
+        // set up matrix
+        let l = 0.5;
+        let r = viewport.Width as f32 + 0.5;
+        let t = 0.5;
+        let b = viewport.Height as f32 + 0.5;
+
+        let mat_ident = Matrix4x4 {
+            M11: 1.0,
+            M22: 1.0,
+            M33: 1.0,
+            M44: 1.0,
+            ..Default::default()
+        };
+
+        let mat_proj = Matrix4x4 {
+            M11: 2.0 / (r - l),
+            M12: 0.0,
+            M13: 0.0,
+            M14: 0.0,
+            M21: 0.0,
+            M22: 2.0 / (t - b),
+            M23: 0.0,
+            M24: 0.0,
+            M31: 0.0,
+            M32: 0.0,
+            M33: 0.5,
+            M34: 0.0,
+            M41: (l + r) / (l - r),
+            M42: (t + b) / (b - t),
+            M43: 0.5,
+            M44: 1.0,
+        };
+
+        dev.SetTransform(D3DTRANSFORMSTATETYPE(256), &mat_ident)?;
+        dev.SetTransform(D3DTS_VIEW, &mat_ident)?;
+        dev.SetTransform(D3DTS_PROJECTION, &mat_proj)?;
 
         // set up render state
+        dev.SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID.0 as _)?;
         dev.SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD.0 as _)?;
+        dev.SetRenderState(D3DRS_ZENABLE, false as _)?;
+        dev.SetRenderState(D3DRS_ZWRITEENABLE, false as _)?;
         dev.SetRenderState(D3DRS_ALPHATESTENABLE, false as _)?;
         dev.SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE.0 as _)?;
         dev.SetRenderState(D3DRS_ALPHABLENDENABLE, true as _)?;
@@ -237,6 +225,7 @@ fn setup_state(
         dev.SetRenderState(D3DRS_BLENDOPALPHA, D3DBLENDOP_ADD.0 as _)?;
         dev.SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE.0 as _)?;
         dev.SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA.0 as _)?;
+        dev.SetRenderState(D3DRS_SCISSORTESTENABLE, true as _)?;
         dev.SetRenderState(D3DRS_FOGENABLE, false as _)?;
         dev.SetRenderState(D3DRS_RANGEFOGENABLE, false as _)?;
         dev.SetRenderState(D3DRS_SPECULARENABLE, false as _)?;
