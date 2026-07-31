@@ -20,9 +20,6 @@ use crate::mesh::FVF_CUSTOMVERTEX;
 
 pub struct DxState {
     original_state: IDirect3DStateBlock9,
-    original_world: Matrix4x4,
-    original_view: Matrix4x4,
-    original_proj: Matrix4x4,
     backbuffer: IDirect3DSurface9,
     dev: IDirect3DDevice9,
 }
@@ -43,24 +40,6 @@ impl DxState {
                 "unable to capture dx state backup"
             );
 
-            let mut original_world: Matrix4x4 = Default::default();
-            let mut original_view: Matrix4x4 = Default::default();
-            let mut original_proj: Matrix4x4 = Default::default();
-
-            expect!(
-                // https://github.com/apitrace/dxsdk/blob/d964b66467aaa734edbc24326da8119f5f063dd3/Include/d3d9types.h#L333C35-L333C56
-                dev.GetTransform(D3DTRANSFORMSTATETYPE(256), &mut original_world),
-                "unable to backup world matrix"
-            );
-            expect!(
-                dev.GetTransform(D3DTS_VIEW, &mut original_view),
-                "unable to backup view matrix"
-            );
-            expect!(
-                dev.GetTransform(D3DTS_PROJECTION, &mut original_proj),
-                "unable to backup projection matrix"
-            );
-
             let backbuffer = expect!(
                 dev.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO),
                 "unable to get original backbuffer"
@@ -71,9 +50,6 @@ impl DxState {
 
             Self {
                 original_state,
-                original_world,
-                original_view,
-                original_proj,
                 backbuffer,
                 dev: dev.clone(),
             }
@@ -85,20 +61,6 @@ impl Drop for DxState {
     fn drop(&mut self) {
         // restore the previous state
         unsafe {
-            expect!(
-                self.dev
-                    .SetTransform(D3DTRANSFORMSTATETYPE(256), &self.original_world),
-                "unable to reset world matrix"
-            );
-            expect!(
-                self.dev.SetTransform(D3DTS_VIEW, &self.original_view),
-                "unable to reset view matrix"
-            );
-            expect!(
-                self.dev.SetTransform(D3DTS_PROJECTION, &self.original_proj),
-                "unable to reset projection matrix"
-            );
-
             let backbuffer = expect!(
                 self.dev.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO),
                 "unable to get back buffer"
