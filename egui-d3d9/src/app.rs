@@ -9,7 +9,7 @@ use windows::Win32::{
 use crate::{
     inputman::InputManager,
     mesh::{Buffers, GpuVertex, MeshDescriptor},
-    state::DxState,
+    state::GpuState,
     texman::TextureManager,
 };
 
@@ -35,6 +35,7 @@ pub struct EguiDx9<T: App> {
     last_vtx_capacity: usize,
     should_reset: bool,
     skip_frame: u8,
+    gpu_state: GpuState,
 }
 
 impl<T: App> EguiDx9<T> {
@@ -73,6 +74,7 @@ impl<T: App> EguiDx9<T> {
             last_vtx_capacity: 0,
             should_reset: false,
             skip_frame: 10,
+            gpu_state: Default::default(),
         }
     }
 
@@ -80,6 +82,7 @@ impl<T: App> EguiDx9<T> {
         self.buffers.delete_buffers();
         self.tex_man.deallocate_textures();
         self.ui_state.free_draw_reset();
+        self.gpu_state.reset();
 
         self.should_reset = true;
         self.skip_frame = 10;
@@ -158,10 +161,11 @@ impl<T: App> EguiDx9<T> {
             self.buffers.update_index_buffer(dev, &indices);
         }
 
-        // back up our state so we don't mess with the game and the game doesn't mess with us.
-        // i actually had the idea to use BeginStateBlock and co. to "cache" the state we set every frame,
-        // and just re-applying it everytime. just setting this manually takes around 50 microseconds on my machine.
-        let _state = DxState::setup(dev, self.get_viewport());
+        expect!(self.gpu_state.backup(dev), "Failed to backup state");
+        expect!(
+            self.gpu_state.setup(dev, self.get_viewport()),
+            "Failed to setup state"
+        );
 
         unsafe {
             expect!(
@@ -222,6 +226,8 @@ impl<T: App> EguiDx9<T> {
                 egui::OutputCommand::OpenUrl(_) => {}
             }
         }
+
+        expect!(self.gpu_state.restore(), "Failed to restore state");
     }
 
     #[inline]
