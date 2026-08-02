@@ -16,6 +16,7 @@ use crate::{
 pub trait App {
     fn ui(&mut self, ui: &mut Ui);
     fn free_draw(&mut self);
+    fn free_draw_on_top_of_game(&mut self, device: &IDirect3DDevice9, backup_game_state: bool);
     fn free_draw_reset(&mut self);
 }
 
@@ -122,6 +123,7 @@ impl<T: App> EguiDx9<T> {
             if !output.textures_delta.is_empty() {
                 self.tex_man.process_free_deltas(&output.textures_delta);
             }
+            self.ui_state.free_draw_on_top_of_game(dev, true);
             return;
         }
 
@@ -162,6 +164,7 @@ impl<T: App> EguiDx9<T> {
         }
 
         expect!(self.gpu_state.backup(dev), "Failed to backup state");
+        self.ui_state.free_draw_on_top_of_game(dev, false);
         expect!(
             self.gpu_state.setup(dev, self.get_viewport()),
             "Failed to setup state"

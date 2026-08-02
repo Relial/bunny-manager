@@ -19,7 +19,7 @@ use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::{
     LogLevel, PluginContext, PluginInfo,
     bunny_3d::{
-        backend::Bunny3dBackend,
+        backend::{Bunny3dBackend, CameraMatrices},
         core::{Bunny3d, texture::TextureId},
     },
     bunny_ui::{
@@ -244,7 +244,24 @@ impl<'a> PluginManager<'a> {
                 plugin.bunny3d(&mut backend.data);
                 backend.allocate_textures(device, &mut plugin.allocated_textures)?;
             }
-            backend.draw(device)?;
+            backend.normal_draw(device)?;
+        }
+        Ok(())
+    }
+
+    pub fn free_draw_on_top_of_game(
+        &mut self,
+        device: &IDirect3DDevice9,
+        backup_game_state: bool,
+    ) -> Result<()> {
+        if let Some(backend) = &mut self.bunny3d {
+            let view = self.addresses.view_matrix();
+            let proj = self.addresses.projection_matrix();
+            backend.draw_on_top_of_game(
+                device,
+                backup_game_state,
+                CameraMatrices::new(view, proj),
+            )?;
         }
         Ok(())
     }

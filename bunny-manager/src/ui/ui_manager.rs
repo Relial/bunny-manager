@@ -107,6 +107,15 @@ impl egui_d3d9::App for UiManager<'_> {
         }
     }
 
+    fn free_draw_on_top_of_game(&mut self, device: &IDirect3DDevice9, backup_game_state: bool) {
+        if let Err(e) = self
+            .plugin_manager
+            .free_draw_on_top_of_game(device, backup_game_state)
+        {
+            panic!("Bunny3D draw error: {e:#}");
+        }
+    }
+
     fn free_draw_reset(&mut self) {
         self.plugin_manager.free_draw_reset();
     }
