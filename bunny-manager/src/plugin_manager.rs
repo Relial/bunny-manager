@@ -20,7 +20,7 @@ use bunny_plugin::{
     LogLevel, PluginContext, PluginInfo,
     bunny_3d::{
         backend::{Bunny3dBackend, CameraMatrices},
-        core::{Bunny3d, texture::TextureId},
+        core::Bunny3d,
     },
     bunny_ui::{
         self,
@@ -33,6 +33,7 @@ use bunny_plugin::{
 };
 use egui::{Checkbox, CollapsingHeader, Id, Rect, TextWrapMode, Ui};
 use rapidhash::fast::RandomState;
+use shared_textures::{SharedTextures, TextureId};
 use tracing::{debug, error, info, warn};
 use windows::{
     Win32::{
@@ -56,7 +57,8 @@ pub struct PluginManager<'a> {
     pub addresses: Addresses,
     input: Input,
     response_pointerstate: RArc<PointerState>,
-    bunny3d: Option<Bunny3dBackend>,
+    pub bunny3d: Option<Bunny3dBackend>,
+    pub textures: Option<RArc<SharedTextures>>,
     plugin_context: PluginContext,
 }
 
@@ -98,6 +100,7 @@ impl<'a> PluginManager<'a> {
             input: Default::default(),
             response_pointerstate: Default::default(),
             bunny3d,
+            textures: None,
             plugin_context,
         }
     }
@@ -138,7 +141,8 @@ impl<'a> PluginManager<'a> {
         });
 
         // Plugins read responses 1 frame late, so they need a copy of the pointerstate that won't get updated.
-        self.response_pointerstate = self.input.read(|i| RArc::new(i.pointer.clone()));
+        let pointer_state = RArc::make_mut(&mut self.response_pointerstate);
+        *pointer_state = self.input.read(|i| i.pointer.clone());
     }
 
     pub fn menu_ui(&mut self, ui: &mut Ui, config: &mut Config) {
@@ -180,6 +184,7 @@ impl<'a> PluginManager<'a> {
                                 self.response_pointerstate.clone(),
                                 ui.max_rect(),
                                 config.collect_stats,
+                                self.textures.clone(),
                             );
                             plugin.process_paint_list(ui);
                         });
@@ -207,6 +212,7 @@ impl<'a> PluginManager<'a> {
                 self.response_pointerstate.clone(),
                 ui.max_rect(),
                 config.collect_stats,
+                self.textures.clone(),
             );
             plugin.process_paint_list(ui);
         }
@@ -464,6 +470,7 @@ impl BunnyPlugin<'_> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn menu_ui(
         &mut self,
         ui: &mut Ui,
@@ -472,30 +479,39 @@ impl BunnyPlugin<'_> {
         response_pointerstate: RArc<PointerState>,
         available_space: Rect,
         collect_stats: bool,
+        textures: Option<RArc<SharedTextures>>,
     ) {
         if let Some(ui_menu) = self.info.as_ref().and_then(|i| i.hooks.ui_menu()) {
             let responses = self
                 .menu_responses
                 .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
-            let mut bunny_ui = BunnyUi::new(
-                Id::new(1),
-                responses.clone(),
-                input.clone(),
-                self.paint_list.clone(),
-                available_space,
-                ui.pixels_per_point(),
-                style,
-            );
+            let new_responses = {
+                let mut bunny_ui = BunnyUi::new(
+                    Id::new(1),
+                    responses.clone(),
+                    input.clone(),
+                    self.paint_list.clone(),
+                    available_space,
+                    ui.pixels_per_point(),
+                    style,
+                    textures,
+                );
 
-            if collect_stats {
-                self.stats.menu_timings().start();
+                if collect_stats {
+                    self.stats.menu_timings().start();
+                }
+                unsafe { ui_menu(&mut bunny_ui) };
+
+                let mut new =
+                    RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
+                bunny_ui.ui(ui, &mut new, response_pointerstate);
+                new
+            };
+            if let Some(r) = RArc::get_mut(responses) {
+                *r = new_responses;
+            } else {
+                *responses = RArc::new(new_responses);
             }
-            unsafe { ui_menu(&mut bunny_ui) };
-
-            let mut new =
-                RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
-            bunny_ui.ui(ui, &mut new, response_pointerstate);
-            self.menu_responses = Some(RArc::new(new));
 
             if collect_stats {
                 self.stats.menu_timings().pre_paint();
@@ -508,6 +524,7 @@ impl BunnyPlugin<'_> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn free_ui(
         &mut self,
         ui: &mut Ui,
@@ -516,30 +533,39 @@ impl BunnyPlugin<'_> {
         response_pointerstate: RArc<PointerState>,
         available_space: Rect,
         collect_stats: bool,
+        textures: Option<RArc<SharedTextures>>,
     ) {
         if let Some(ui_free) = self.info.as_ref().and_then(|i| i.hooks.ui_free()) {
             let responses = self
                 .free_responses
                 .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
-            let mut bunny_ui = BunnyUi::new(
-                Id::new(1),
-                responses.clone(),
-                input.clone(),
-                self.paint_list.clone(),
-                available_space,
-                ui.pixels_per_point(),
-                style,
-            );
+            let new_responses = {
+                let mut bunny_ui = BunnyUi::new(
+                    Id::new(1),
+                    responses.clone(),
+                    input.clone(),
+                    self.paint_list.clone(),
+                    available_space,
+                    ui.pixels_per_point(),
+                    style,
+                    textures,
+                );
 
-            if collect_stats {
-                self.stats.ui_timings().start();
+                if collect_stats {
+                    self.stats.ui_timings().start();
+                }
+                unsafe { ui_free(&mut bunny_ui) };
+
+                let mut new =
+                    RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
+                bunny_ui.ui(ui, &mut new, response_pointerstate);
+                new
+            };
+            if let Some(r) = RArc::get_mut(responses) {
+                *r = new_responses;
+            } else {
+                *responses = RArc::new(new_responses);
             }
-            unsafe { ui_free(&mut bunny_ui) };
-
-            let mut new =
-                RHashMap::with_capacity_and_hasher(responses.len() + 64, RandomState::new());
-            bunny_ui.ui(ui, &mut new, response_pointerstate);
-            self.free_responses = Some(RArc::new(new));
 
             if collect_stats {
                 self.stats.ui_timings().pre_paint();

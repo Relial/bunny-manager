@@ -34,6 +34,7 @@ use crate::{
 pub const PLUGINS_DIR_NAME: &str = "bunny_plugins";
 pub const CONFIG_DIR_NAME: &str = "bunny_config";
 pub const FONTS_DIR_NAME: &str = "bunny_fonts";
+pub const TEXTURES_DIR_NAME: &str = "bunny_textures";
 
 pub static MODULE_DIR_PATH: OnceLock<PathBuf> = OnceLock::new();
 pub static LOG_LEVEL: OnceLock<LogLevel> = OnceLock::new();
@@ -45,6 +46,7 @@ mod egui_hook;
 mod font;
 mod hooks;
 mod plugin_manager;
+mod texture;
 mod ui;
 
 fn message_box_error(error: anyhow::Error) {
@@ -73,6 +75,7 @@ fn create_required_dirs(module_dir: impl AsRef<Path>) -> Result<()> {
     let plugins = base.join(PLUGINS_DIR_NAME);
     let config = base.join(CONFIG_DIR_NAME);
     let fonts = base.join(FONTS_DIR_NAME);
+    let textures = base.join(TEXTURES_DIR_NAME);
     if !plugins.exists() {
         std::fs::create_dir(&plugins).with_context(|| {
             format!(
@@ -92,6 +95,12 @@ fn create_required_dirs(module_dir: impl AsRef<Path>) -> Result<()> {
         std::fs::create_dir(&fonts)
             .with_context(|| format!("Failed to create fonts directory at {}", fonts.display()))?;
         info!("Created fonts directory at {}", fonts.display());
+    }
+    if !textures.exists() {
+        std::fs::create_dir(&textures).with_context(|| {
+            format!("Failed to create textures directory at {}", fonts.display())
+        })?;
+        info!("Created textures directory at {}", textures.display());
     }
     Ok(())
 }

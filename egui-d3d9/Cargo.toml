@@ -14,7 +14,7 @@ edition = "2021"
 silent = []
 
 [dependencies]
-anyhow = "1.0.103"
+anyhow = "1.0.104"
 windows = { version = "0.62.2", features = [
 	"Win32_UI_Input_KeyboardAndMouse",
 	"Win32_System_WindowsProgramming",

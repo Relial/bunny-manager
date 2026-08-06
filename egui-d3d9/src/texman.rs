@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use egui::{ImageData, TextureId, TexturesDelta};
+use egui::{ColorImage, ImageData, TextureId, TexturesDelta};
 use windows::Win32::{
     Foundation::{POINT, RECT},
     Graphics::Direct3D9::{
@@ -78,7 +78,63 @@ impl TextureManager {
     }
 
     pub fn deallocate_textures(&mut self) {
-        self.textures.clear();
+        self.textures.retain(|tid, t| {
+            let is_user = matches!(tid, TextureId::User(_));
+            if is_user {
+                t.handle = None;
+            }
+            is_user
+        });
+    }
+
+    pub fn reallocate_textures(
+        &mut self,
+        dev: &IDirect3DDevice9,
+    ) -> Vec<(TextureId, IDirect3DTexture9)> {
+        self.textures
+            .iter_mut()
+            .map(|(tid, texture)| {
+                let handle = new_texture_from_buffer(dev, &texture.pixels, texture.size);
+                texture.handle = Some(handle.clone());
+                (*tid, handle)
+            })
+            .collect()
+    }
+
+    pub fn allocate_shared_textures(
+        &mut self,
+        dev: &IDirect3DDevice9,
+        textures: impl IntoIterator<Item = (TextureId, Arc<ColorImage>)>,
+    ) -> Vec<(TextureId, IDirect3DTexture9)> {
+        textures
+            .into_iter()
+            .map(|(id, image)| {
+                let pixels: Vec<TextureColor> = image
+                    .pixels
+                    .iter()
+                    .map(|c| {
+                        let cols = c.to_array();
+                        TextureColor {
+                            r: cols[0],
+                            g: cols[1],
+                            b: cols[2],
+                            a: cols[3],
+                        }
+                    })
+                    .collect();
+                let size = image.size;
+                let handle = new_texture_from_buffer(dev, &pixels, size);
+                self.textures.insert(
+                    id,
+                    ManagedTexture {
+                        handle: Some(handle.clone()),
+                        pixels,
+                        size,
+                    },
+                );
+                (id, handle)
+            })
+            .collect()
     }
 }
 

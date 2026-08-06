@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use clipboard::{windows_clipboard::WindowsClipboardContext, ClipboardProvider};
-use egui::{epaint::Primitive, Context, Ui};
+use egui::{epaint::Primitive, ColorImage, Context, TextureId, Ui};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
-    Graphics::Direct3D9::{IDirect3DDevice9, D3DPT_TRIANGLELIST, D3DVIEWPORT9},
+    Graphics::Direct3D9::{IDirect3DDevice9, IDirect3DTexture9, D3DPT_TRIANGLELIST, D3DVIEWPORT9},
     UI::WindowsAndMessaging::GetClientRect,
 };
 
@@ -18,6 +20,11 @@ pub trait App {
     fn free_draw(&mut self);
     fn free_draw_on_top_of_game(&mut self, device: &IDirect3DDevice9, backup_game_state: bool);
     fn free_draw_reset(&mut self);
+    fn get_shared_textures(
+        &mut self,
+        egui_ctx: &Context,
+    ) -> Option<impl Iterator<Item = (TextureId, Arc<ColorImage>)>>;
+    fn add_shared_texture_allocations(&mut self, textures: Vec<(TextureId, IDirect3DTexture9)>);
 }
 
 unsafe impl<T: App> Send for EguiDx9<T> {}
@@ -96,6 +103,8 @@ impl<T: App> EguiDx9<T> {
         if self.skip_frame > 0 {
             if self.should_reset {
                 self.buffers = Buffers::create_buffers(dev, 16384, 16384);
+                let ids_handles = self.tex_man.reallocate_textures(dev);
+                self.ui_state.add_shared_texture_allocations(ids_handles);
                 self.prims.clear();
                 self.last_idx_capacity = 0;
                 self.last_vtx_capacity = 0;
@@ -107,6 +116,13 @@ impl<T: App> EguiDx9<T> {
             }
             self.skip_frame -= 1;
             return;
+        }
+        if let Some(ids_handles) = self
+            .ui_state
+            .get_shared_textures(&self.ctx)
+            .map(|iter| self.tex_man.allocate_shared_textures(dev, iter))
+        {
+            self.ui_state.add_shared_texture_allocations(ids_handles);
         }
 
         let output = self.ctx.run_ui(self.input_man.collect_input(), |ui| {
