@@ -19,7 +19,8 @@ use crate::{
 pub struct MainWindow {
     pub open: bool,
     default_size: Vec2,
-    default_pos: Pos2,
+    current_pos: Pos2,
+    drag_start: Option<Pos2>,
 }
 
 impl MainWindow {
@@ -27,7 +28,8 @@ impl MainWindow {
         Self {
             open: config.open_on_startup,
             default_size: config.window_size,
-            default_pos: config.window_position,
+            current_pos: config.window_position,
+            drag_start: None,
         }
     }
 
@@ -49,12 +51,24 @@ impl MainWindow {
             ))
             .shadow(Shadow::NONE)
             .stroke(ui.visuals().window_stroke);
+
+        let title_bar_id = Id::new("Main window title bar");
+        if let Some(title_bar_resp) = ui.read_response(title_bar_id)
+            && title_bar_resp.dragged()
+        {
+            let drag_start = self.drag_start.get_or_insert(self.current_pos);
+            self.current_pos = *drag_start + title_bar_resp.total_drag_delta().unwrap_or_default();
+        } else {
+            self.drag_start = None;
+        }
+
         let window_id = Id::new("Main Window");
         egui::Window::new("Bunny Manager")
             .id(window_id)
+            .movable(false)
             .default_size(self.default_size)
-            .default_pos(self.default_pos)
-            .resizable([true, true])
+            .current_pos(self.current_pos)
+            .resizable(true)
             .frame(frame)
             .title_bar(false)
             .scroll(false)
@@ -63,8 +77,11 @@ impl MainWindow {
                 if config.remember_window_size_position {
                     let window_rect = ui.max_rect();
                     config.window_size = window_rect.size();
-                    // For whatever reason ui.max_rect()'s position is off by 1.0, 1.0 compared to what the window's default_pos() produces
-                    config.window_position = window_rect.left_top() - vec2(1.0, 1.0);
+                    // For whatever reason ui.max_rect()'s position is off by 1.0, 1.0 compared to what the window's current_pos() produces
+                    let window_pos = window_rect.left_top() - vec2(1.0, 1.0);
+                    config.window_position = window_pos;
+                    // The window position gets clamped to the game window, so update the position we track to align with the window's actual position
+                    self.current_pos = window_pos;
                 }
 
                 let style = ui.style_mut();
@@ -72,7 +89,7 @@ impl MainWindow {
                 style.wrap_mode = Some(TextWrapMode::Extend);
                 style.interaction.selectable_labels = false;
 
-                self.title_bar(ui);
+                self.title_bar(ui, title_bar_id);
 
                 egui::ScrollArea::both()
                     .scroll_source(ScrollSource::MOUSE_WHEEL | ScrollSource::SCROLL_BAR)
@@ -85,17 +102,18 @@ impl MainWindow {
             .map(|inner| inner.response)
     }
 
-    fn title_bar(&mut self, ui: &mut Ui) {
+    fn title_bar(&mut self, ui: &mut Ui, title_bar_id: Id) {
         let title_bar_height = 24.0;
         let rect = {
             let mut rect = ui.max_rect();
             rect.max.y = rect.min.y + title_bar_height;
             rect
         };
+        ui.interact(rect, title_bar_id, Sense::DRAG);
         let painter = ui.painter();
-        let id = Id::new("close button");
+        let close_button_id = Id::new("close button");
         let widget_state = ui
-            .read_response(id)
+            .read_response(close_button_id)
             .map(|r| r.widget_state())
             .unwrap_or_default();
         let close_color = ui.visuals().widgets.state(widget_state).fg_stroke.color;
@@ -106,7 +124,10 @@ impl MainWindow {
             FontId::proportional(14.0),
             close_color,
         );
-        if ui.interact(close_rect, id, Sense::click()).clicked() {
+        if ui
+            .interact(close_rect, close_button_id, Sense::click())
+            .clicked()
+        {
             self.open = false;
         }
 
