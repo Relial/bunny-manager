@@ -1,10 +1,13 @@
 use std::{ffi::c_void, thread::sleep, time::Duration};
 
+use anyhow::Result;
 use bunny_plugin::{GameMode, MhfoInfo, bunny_3d::Matrix4x4};
+use egui::{Pos2, Rect};
+use glam::Mat4;
 use windows::{
     Win32::{
-        Foundation::HWND, Graphics::Direct3D9::IDirect3DDevice9,
-        System::LibraryLoader::GetModuleHandleA,
+        self, Foundation::HWND, Graphics::Direct3D9::IDirect3DDevice9,
+        System::LibraryLoader::GetModuleHandleA, UI::WindowsAndMessaging::GetClientRect,
     },
     core::s,
 };
@@ -71,18 +74,31 @@ impl Addresses {
         }
     }
 
+    #[inline]
     pub fn hwnd(&self) -> HWND {
         let ptr = self.hwnd as *const usize;
         let v = unsafe { ptr.read() };
         HWND(v as *mut c_void)
     }
 
+    #[inline]
     pub fn view_matrix(&self) -> Matrix4x4 {
         unsafe { (self.view_matrix as *const Matrix4x4).read() }
     }
 
+    #[inline]
+    pub fn view_glam(&self) -> Mat4 {
+        unsafe { (self.view_matrix as *const Mat4).read() }
+    }
+
+    #[inline]
     pub fn projection_matrix(&self) -> Matrix4x4 {
         unsafe { (self.projection_matrix as *const Matrix4x4).read() }
+    }
+
+    #[inline]
+    pub fn proj_glam(&self) -> Mat4 {
+        unsafe { (self.projection_matrix as *const Mat4).read() }
     }
 
     pub fn d3d9_device(&self) -> *const IDirect3DDevice9 {
@@ -93,5 +109,20 @@ impl Addresses {
             }
             GameMode::HighGrade => self.d3d_device as *const IDirect3DDevice9,
         }
+    }
+
+    pub fn get_client_rect(&self) -> Result<Rect> {
+        let mut rect: Win32::Foundation::RECT = Default::default();
+        unsafe { GetClientRect(self.hwnd(), &mut rect) }?;
+        Ok(Rect::from_min_max(
+            Pos2 {
+                x: rect.left as f32,
+                y: rect.top as f32,
+            },
+            Pos2 {
+                x: rect.right as f32,
+                y: rect.bottom as f32,
+            },
+        ))
     }
 }

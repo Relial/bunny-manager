@@ -17,7 +17,7 @@ use abi_stable::{
 };
 use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::{
-    LogLevel, PluginContext, PluginInfo,
+    LogLevel, PluginContext, PluginInfo, TextureId,
     bunny_3d::{
         backend::{Bunny3dBackend, CameraMatrices},
         core::Bunny3d,
@@ -33,7 +33,7 @@ use bunny_plugin::{
 };
 use egui::{Checkbox, CollapsingHeader, Id, Rect, TextWrapMode, Ui};
 use rapidhash::fast::RandomState;
-use shared_textures::{SharedTextures, TextureId};
+use shared::{camera::Camera, texture::SharedTextures};
 use tracing::{debug, error, info, warn};
 use windows::{
     Win32::{
@@ -60,6 +60,7 @@ pub struct PluginManager<'a> {
     pub bunny3d: Option<Bunny3dBackend>,
     pub textures: Option<RArc<SharedTextures>>,
     plugin_context: PluginContext,
+    camera: RArc<Camera>,
 }
 
 impl<'a> PluginManager<'a> {
@@ -85,7 +86,6 @@ impl<'a> PluginManager<'a> {
                 None
             }
         };
-
         let plugin_context = PluginContext::new(
             addresses.mhfo_info,
             dirs.configs.to_string_lossy(),
@@ -102,6 +102,7 @@ impl<'a> PluginManager<'a> {
             bunny3d,
             textures: None,
             plugin_context,
+            camera: Default::default(),
         }
     }
 
@@ -145,6 +146,22 @@ impl<'a> PluginManager<'a> {
         *pointer_state = self.input.read(|i| i.pointer.clone());
     }
 
+    pub fn update_camera(&mut self) {
+        if let Ok(screen_rect) = self
+            .addresses
+            .get_client_rect()
+            .map_err(|e| error!("{e:#}"))
+        {
+            let view = self.addresses.view_glam();
+            let proj = self.addresses.proj_glam();
+            let screen_size = glam::Vec2 {
+                x: screen_rect.width(),
+                y: screen_rect.height(),
+            };
+            self.camera = RArc::new(Camera::new(view, proj, screen_size));
+        }
+    }
+
     pub fn menu_ui(&mut self, ui: &mut Ui, config: &mut Config) {
         for plugin in &mut self.plugins {
             ui.horizontal(|ui| {
@@ -185,6 +202,7 @@ impl<'a> PluginManager<'a> {
                                 ui.max_rect(),
                                 config.collect_stats,
                                 self.textures.clone(),
+                                self.camera.clone(),
                             );
                             plugin.process_paint_list(ui);
                         });
@@ -213,6 +231,7 @@ impl<'a> PluginManager<'a> {
                 ui.max_rect(),
                 config.collect_stats,
                 self.textures.clone(),
+                self.camera.clone(),
             );
             plugin.process_paint_list(ui);
         }
@@ -245,7 +264,7 @@ impl<'a> PluginManager<'a> {
     pub fn free_draw(&mut self) -> Result<()> {
         if let Some(backend) = &mut self.bunny3d {
             let device = unsafe { &*self.addresses.d3d9_device() };
-            backend.start_frame();
+            backend.start_frame(self.camera.clone());
             for plugin in &mut self.plugins {
                 plugin.bunny3d(&mut backend.data);
                 backend.allocate_textures(device, &mut plugin.allocated_textures)?;
@@ -480,6 +499,7 @@ impl BunnyPlugin<'_> {
         available_space: Rect,
         collect_stats: bool,
         textures: Option<RArc<SharedTextures>>,
+        camera: RArc<Camera>,
     ) {
         if let Some(ui_menu) = self.info.as_ref().and_then(|i| i.hooks.ui_menu()) {
             let responses = self
@@ -495,6 +515,7 @@ impl BunnyPlugin<'_> {
                     ui.pixels_per_point(),
                     style,
                     textures,
+                    camera,
                 );
 
                 if collect_stats {
@@ -534,6 +555,7 @@ impl BunnyPlugin<'_> {
         available_space: Rect,
         collect_stats: bool,
         textures: Option<RArc<SharedTextures>>,
+        camera: RArc<Camera>,
     ) {
         if let Some(ui_free) = self.info.as_ref().and_then(|i| i.hooks.ui_free()) {
             let responses = self
@@ -549,6 +571,7 @@ impl BunnyPlugin<'_> {
                     ui.pixels_per_point(),
                     style,
                     textures,
+                    camera,
                 );
 
                 if collect_stats {

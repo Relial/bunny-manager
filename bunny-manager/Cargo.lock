@@ -74,6 +74,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
 dependencies = [
  "cfg-if",
+ "getrandom 0.3.4",
  "once_cell",
  "serde",
  "version_check",
@@ -275,7 +276,8 @@ dependencies = [
  "image",
  "rapidhash",
  "serde",
- "shared-textures",
+ "shared",
+ "tobj",
  "tracing",
  "windows",
  "windows-numerics",
@@ -291,12 +293,13 @@ dependencies = [
  "egui",
  "egui-d3d9",
  "egui_extras",
+ "glam",
  "ilhook",
  "jiff",
  "rapidhash",
  "retour",
  "serde",
- "shared-textures",
+ "shared",
  "toml",
  "tracing",
  "tracing-subscriber",
@@ -312,7 +315,7 @@ dependencies = [
  "bunny-3d",
  "bunny-ui",
  "ilhook",
- "shared-textures",
+ "shared",
  "tracing-subscriber",
 ]
 
@@ -326,7 +329,7 @@ dependencies = [
  "nohash-hasher",
  "rapidhash",
  "serde",
- "shared-textures",
+ "shared",
  "tracing",
 ]
 
@@ -2094,11 +2097,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "shared-textures"
+name = "shared"
 version = "0.1.0"
 dependencies = [
  "abi_stable",
+ "anyhow",
  "egui",
+ "glam",
  "rapidhash",
 ]
 
@@ -2320,6 +2325,15 @@ dependencies = [
  "arrayref",
  "bytemuck",
  "strict-num",
+]
+
+[[package]]
+name = "tobj"
+version = "4.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6eb8e04167c1c0c76b5de63226fd733485ad63ef71e40de31e16272f47b099e2"
+dependencies = [
+ "ahash",
 ]
 
 [[package]]

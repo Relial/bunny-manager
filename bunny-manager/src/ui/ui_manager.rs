@@ -5,6 +5,7 @@ use std::{
 };
 
 use abi_stable::std_types::{RArc, RString};
+use bunny_plugin::TextureId;
 use egui::{
     FontData, FontFamily, Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2,
     emath::GuiRounding as _,
@@ -13,7 +14,7 @@ use egui::{
     load::TexturePoll,
     paint_texture_at,
 };
-use shared_textures::{SharedTextures, SizedTexture};
+use shared::texture::{SharedTextures, SizedTexture};
 use tracing::{debug, error, info, warn};
 use windows::Win32::Graphics::Direct3D9::IDirect3DDevice9;
 
@@ -137,8 +138,7 @@ impl egui_d3d9::App for UiManager<'_> {
                 .enumerate()
                 .map(|(i, result)| {
                     let id = i as u64;
-                    let texture =
-                        SizedTexture::new(shared_textures::TextureId::Shared(id), result.data.size);
+                    let texture = SizedTexture::new(TextureId::Shared(id), result.data.size);
                     names_textures.push((result.file_name.into(), texture));
 
                     (egui::TextureId::User(id), result.data)
@@ -170,9 +170,7 @@ impl egui_d3d9::App for UiManager<'_> {
             b.add_shared_texture_allocations(textures.into_iter().filter_map(
                 |(egui_id, handle)| match egui_id {
                     egui::TextureId::Managed(_) => None,
-                    egui::TextureId::User(id) => {
-                        Some((shared_textures::TextureId::Shared(id), handle))
-                    }
+                    egui::TextureId::User(id) => Some((TextureId::Shared(id), handle)),
                 },
             ));
         }

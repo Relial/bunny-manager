@@ -97,7 +97,9 @@ fn hook_quest_complete_update(addresses: &Addresses) -> Result<HookPoint> {
 unsafe extern "cdecl" fn on_rendering(_: *mut Registers, _: usize) {
     if let Some(m) = APP.get() {
         let mut app = m.lock().unwrap();
-        app.state_mut().free_draw();
+        let state = app.state_mut();
+        state.plugin_manager.update_camera();
+        state.free_draw();
     }
 }
 
