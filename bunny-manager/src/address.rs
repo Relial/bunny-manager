@@ -3,7 +3,7 @@ use std::{ffi::c_void, thread::sleep, time::Duration};
 use anyhow::Result;
 use bunny_plugin::{GameMode, MhfoInfo, bunny_3d::Matrix4x4};
 use egui::{Pos2, Rect};
-use glam::Mat4;
+use glam::{Mat4, Vec3};
 use windows::{
     Win32::{
         self, Foundation::HWND, Graphics::Direct3D9::IDirect3DDevice9,
@@ -25,6 +25,7 @@ pub struct Addresses {
     projection_matrix: usize,
     pub rendering_stuff: usize,
     d3d_device: usize,
+    camera_position: usize,
 }
 
 pub fn find_addresses() -> Addresses {
@@ -57,6 +58,7 @@ impl Addresses {
                 projection_matrix: dll + 0x5c47320,
                 rendering_stuff: dll + 0xb5c630,
                 d3d_device: dll + 0x5bd9e0c,
+                camera_position: dll + 0x1bf21c0,
             },
             GameMode::HighGrade => Self {
                 mhfo_info,
@@ -70,6 +72,7 @@ impl Addresses {
                 projection_matrix: dll + 0xe87ef50,
                 rendering_stuff: dll + 0xb7af3a,
                 d3d_device: dll + 0xe811a3c,
+                camera_position: dll + 0x1c49d50,
             },
         }
     }
@@ -99,6 +102,11 @@ impl Addresses {
     #[inline]
     pub fn proj_glam(&self) -> Mat4 {
         unsafe { (self.projection_matrix as *const Mat4).read() }
+    }
+
+    #[inline]
+    pub fn camera_position(&self) -> Vec3 {
+        unsafe { (self.camera_position as *const Vec3).read() }
     }
 
     pub fn d3d9_device(&self) -> *const IDirect3DDevice9 {

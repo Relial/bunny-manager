@@ -19,8 +19,8 @@ use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::{
     LogLevel, PluginContext, PluginInfo, TextureId,
     bunny_3d::{
+        Bunny3d,
         backend::{Bunny3dBackend, CameraMatrices},
-        core::Bunny3d,
     },
     bunny_ui::{
         self,
@@ -154,11 +154,12 @@ impl<'a> PluginManager<'a> {
         {
             let view = self.addresses.view_glam();
             let proj = self.addresses.proj_glam();
+            let pos = self.addresses.camera_position();
             let screen_size = glam::Vec2 {
                 x: screen_rect.width(),
                 y: screen_rect.height(),
             };
-            self.camera = RArc::new(Camera::new(view, proj, screen_size));
+            self.camera = RArc::new(Camera::new(view, proj, pos, screen_size));
         }
     }
 
