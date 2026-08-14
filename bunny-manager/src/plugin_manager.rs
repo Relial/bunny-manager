@@ -13,7 +13,7 @@ use std::{
 
 use abi_stable::{
     external_types::RRwLock,
-    std_types::{RArc, RHashMap, RString, RVec},
+    std_types::{RArc, RHashMap, RVec},
 };
 use anyhow::{Context as _, Result, anyhow};
 use bunny_plugin::{
@@ -25,7 +25,7 @@ use bunny_plugin::{
     bunny_ui::{
         self,
         input_state::{Input, PointerState},
-        paint::paintlist::PaintList,
+        paint::{paintlist::PaintList, text::fonts::FontFamily},
         response::Response,
         ui::BunnyUi,
     },
@@ -61,6 +61,7 @@ pub struct PluginManager<'a> {
     pub textures: Option<RArc<SharedTextures>>,
     plugin_context: PluginContext,
     camera: RArc<Camera>,
+    fonts: RArc<RVec<FontFamily>>,
 }
 
 impl<'a> PluginManager<'a> {
@@ -68,7 +69,7 @@ impl<'a> PluginManager<'a> {
         addresses: Addresses,
         log_level: LogLevel,
         creation_context: &egui::Context,
-        fonts: RVec<RString>,
+        fonts: RArc<RVec<FontFamily>>,
         device: &IDirect3DDevice9,
     ) -> Self {
         let dirs = PluginDirs::new();
@@ -89,7 +90,6 @@ impl<'a> PluginManager<'a> {
         let plugin_context = PluginContext::new(
             addresses.mhfo_info,
             dirs.configs.to_string_lossy(),
-            fonts,
             log_level,
         );
         Self {
@@ -103,6 +103,7 @@ impl<'a> PluginManager<'a> {
             textures: None,
             plugin_context,
             camera: Default::default(),
+            fonts,
         }
     }
 
@@ -204,6 +205,7 @@ impl<'a> PluginManager<'a> {
                                 config.collect_stats,
                                 self.textures.clone(),
                                 self.camera.clone(),
+                                self.fonts.clone(),
                             );
                             plugin.process_paint_list(ui);
                         });
@@ -233,6 +235,7 @@ impl<'a> PluginManager<'a> {
                 config.collect_stats,
                 self.textures.clone(),
                 self.camera.clone(),
+                self.fonts.clone(),
             );
             plugin.process_paint_list(ui);
         }
@@ -501,6 +504,7 @@ impl BunnyPlugin<'_> {
         collect_stats: bool,
         textures: Option<RArc<SharedTextures>>,
         camera: RArc<Camera>,
+        fonts: RArc<RVec<FontFamily>>,
     ) {
         if let Some(ui_menu) = self.info.as_ref().and_then(|i| i.hooks.ui_menu()) {
             let responses = self
@@ -517,6 +521,7 @@ impl BunnyPlugin<'_> {
                     style,
                     textures,
                     camera,
+                    fonts,
                 );
 
                 if collect_stats {
@@ -557,6 +562,7 @@ impl BunnyPlugin<'_> {
         collect_stats: bool,
         textures: Option<RArc<SharedTextures>>,
         camera: RArc<Camera>,
+        fonts: RArc<RVec<FontFamily>>,
     ) {
         if let Some(ui_free) = self.info.as_ref().and_then(|i| i.hooks.ui_free()) {
             let responses = self
@@ -573,6 +579,7 @@ impl BunnyPlugin<'_> {
                     style,
                     textures,
                     camera,
+                    fonts,
                 );
 
                 if collect_stats {

@@ -4,10 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use abi_stable::std_types::{RArc, RString};
-use bunny_plugin::TextureId;
+use abi_stable::std_types::RArc;
+use bunny_plugin::{TextureId, bunny_ui::paint::text::fonts::FontFamily};
 use egui::{
-    FontData, FontFamily, Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2,
+    FontData, Image, Pos2, Rect, SizeHint, TextureOptions, Ui, Vec2,
     emath::GuiRounding as _,
     epaint::text::{FontInsert, FontPriority, InsertFontFamily},
     include_image,
@@ -211,9 +211,18 @@ impl UiManager<'_> {
         let log_level = LOG_LEVEL
             .get()
             .expect("LOG_LEVEL must be initialized before UI manager init");
-        let font_names = fonts.names().map(RString::from).collect();
-        let mut plugin_manager =
-            PluginManager::new(addresses, *log_level, creation_context, font_names, device);
+        let loaded_font_families = fonts.names().map(|name| FontFamily::Name(name.into()));
+        let font_families = std::iter::once(FontFamily::Proportional)
+            .chain([FontFamily::Monospace])
+            .chain(loaded_font_families)
+            .collect();
+        let mut plugin_manager = PluginManager::new(
+            addresses,
+            *log_level,
+            creation_context,
+            RArc::new(font_families),
+            device,
+        );
         info!("Loading plugins");
         plugin_manager.load_all(&config.manually_disabled_plugins);
         info!("Loading done");
@@ -266,11 +275,11 @@ fn ui_init(ctx: &egui::Context, fonts: &Fonts) {
         FontData::from_static(include_bytes!("../../assets/NotoSansJP-Regular.ttf")),
         vec![
             InsertFontFamily {
-                family: FontFamily::Proportional,
+                family: egui::FontFamily::Proportional,
                 priority: FontPriority::Lowest,
             },
             InsertFontFamily {
-                family: FontFamily::Monospace,
+                family: egui::FontFamily::Monospace,
                 priority: FontPriority::Lowest,
             },
         ],
