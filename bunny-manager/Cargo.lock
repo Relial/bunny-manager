@@ -271,11 +271,10 @@ dependencies = [
  "abi_stable",
  "anyhow",
  "bytemuck",
- "epaint",
+ "ecolor",
  "glam",
  "image",
  "rapidhash",
- "serde",
  "shared",
  "tobj",
  "tracing",
@@ -289,7 +288,9 @@ version = "0.2.4"
 dependencies = [
  "abi_stable",
  "anyhow",
+ "bunny-3d",
  "bunny-plugin",
+ "bunny-ui",
  "egui",
  "egui-d3d9",
  "egui_extras",
@@ -325,10 +326,12 @@ version = "0.2.0"
 dependencies = [
  "abi_stable",
  "anyhow",
+ "bitflags 2.13.1",
+ "bytemuck",
+ "ecolor",
  "egui",
- "nohash-hasher",
+ "emath",
  "rapidhash",
- "serde",
  "shared",
  "tracing",
 ]
@@ -545,6 +548,7 @@ version = "0.34.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a05fbfa222ffb51989d5ccf33e5f7aebfcf96c5023413856b0c3618a7f79896e"
 dependencies = [
+ "bytemuck",
  "emath",
  "serde",
 ]
@@ -623,6 +627,7 @@ version = "0.34.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b53f0d33a479321da6b0caa71366c9f67e8a2c149762d90bdc0d16e601ee8ecb"
 dependencies = [
+ "bytemuck",
  "serde",
 ]
 
@@ -664,6 +669,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6675898a291ec212fc3df04f537d177fce8496120244590e6359dcaa4c25da79"
 dependencies = [
  "ahash",
+ "bytemuck",
  "ecolor",
  "emath",
  "epaint_default_fonts",
@@ -1377,9 +1383,9 @@ dependencies = [
 
 [[package]]
 name = "num-integer"
-version = "0.1.46"
+version = "0.1.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
+checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
 dependencies = [
  "num-traits",
 ]
@@ -2102,7 +2108,6 @@ version = "0.1.0"
 dependencies = [
  "abi_stable",
  "anyhow",
- "egui",
  "glam",
  "rapidhash",
 ]
@@ -3099,9 +3104,9 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zune-core"
-version = "0.5.1"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb8a0807f7c01457d0379ba880ba6322660448ddebc890ce29bb64da71fb40f9"
+checksum = "d56377fd46368984a170bc5aac5567e52ca5da874caa60bea39fcbca78fb658b"
 
 [[package]]
 name = "zune-inflate"

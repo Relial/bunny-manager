@@ -11,7 +11,9 @@ anyhow = "1.0.104"
 egui = { version = "0.34.3", features = ["serde", "rayon"] }
 egui_extras = { version = "0.34.3", features = ["all_loaders"] }
 egui-d3d9 = { path = "../egui-d3d9" }
-bunny-plugin = { path = "../../bunny-plugin/plugin", features = ["tobj"] }
+bunny-plugin = { path = "../../bunny-plugin/plugin", features = ["3d"] }
+bunny-ui = { path = "../../bunny-plugin/bunny-ui", features = ["manager"] }
+bunny-3d = { path = "../../bunny-plugin/bunny-3d", features = ["backend"] }
 shared = { path = "../../bunny-plugin/shared" }
 retour = {version = "0.4.0-alpha.4", features = ["static-detour"]}
 tracing = "0.1.44"

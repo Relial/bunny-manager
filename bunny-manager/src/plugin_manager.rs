@@ -16,12 +16,12 @@ use abi_stable::{
     std_types::{RArc, RHashMap, RVec},
 };
 use anyhow::{Context as _, Result, anyhow};
+use bunny_3d::{
+    Bunny3d,
+    backend::{Bunny3dBackend, CameraMatrices},
+};
 use bunny_plugin::{
     LogLevel, PluginContext, PluginInfo, TextureId,
-    bunny_3d::{
-        Bunny3d,
-        backend::{Bunny3dBackend, CameraMatrices},
-    },
     bunny_ui::{
         self,
         input_state::{Input, PointerState},
@@ -31,7 +31,8 @@ use bunny_plugin::{
     },
     hook::HookKind,
 };
-use egui::{Checkbox, CollapsingHeader, Id, Rect, TextWrapMode, Ui};
+use bunny_ui::Id;
+use egui::{Checkbox, CollapsingHeader, Rect, TextWrapMode, Ui};
 use rapidhash::fast::RandomState;
 use shared::{camera::Camera, texture::SharedTextures};
 use tracing::{debug, error, info, warn};
@@ -512,7 +513,7 @@ impl BunnyPlugin<'_> {
                 .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
             let new_responses = {
                 let mut bunny_ui = BunnyUi::new(
-                    Id::new(1),
+                    Id::new(ui.next_auto_id().value()),
                     responses.clone(),
                     input.clone(),
                     self.paint_list.clone(),
@@ -570,7 +571,7 @@ impl BunnyPlugin<'_> {
                 .get_or_insert(RArc::new(RHashMap::with_hasher(RandomState::new())));
             let new_responses = {
                 let mut bunny_ui = BunnyUi::new(
-                    Id::new(1),
+                    Id::new(ui.next_auto_id().value()),
                     responses.clone(),
                     input.clone(),
                     self.paint_list.clone(),
