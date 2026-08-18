@@ -1,7 +1,8 @@
 use std::{ffi::c_void, thread::sleep, time::Duration};
 
 use anyhow::Result;
-use bunny_plugin::{GameMode, MhfoInfo, bunny_3d::Matrix4x4};
+use bunny_3d::Matrix4x4;
+use bunny_plugin::{GameMode, MhfoInfo};
 use egui::{Pos2, Rect};
 use glam::{Mat4, Vec3};
 use windows::{
@@ -56,7 +57,7 @@ impl Addresses {
                 quest_complete_update: dll + 0x8810b0,
                 view_matrix: dll + 0x5c47360,
                 projection_matrix: dll + 0x5c47320,
-                rendering_stuff: dll + 0xb5c630,
+                rendering_stuff: dll + 0xb5c63a,
                 d3d_device: dll + 0x5bd9e0c,
                 camera_position: dll + 0x1bf21c0,
             },
@@ -70,7 +71,7 @@ impl Addresses {
                 quest_complete_update: dll + 0x89cb50,
                 view_matrix: dll + 0xe87ef90,
                 projection_matrix: dll + 0xe87ef50,
-                rendering_stuff: dll + 0xb7af3a,
+                rendering_stuff: dll + 0xb7af44,
                 d3d_device: dll + 0xe811a3c,
                 camera_position: dll + 0x1c49d50,
             },
