@@ -267,6 +267,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 [[package]]
 name = "bunny-3d"
 version = "0.1.0"
+source = "git+https://github.com/Relial/bunny-plugin.git?tag=api-v3#bd714e7cd5b9685f9abc9dc9f0a714cefb864f88"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -310,6 +311,7 @@ dependencies = [
 [[package]]
 name = "bunny-plugin"
 version = "0.3.0"
+source = "git+https://github.com/Relial/bunny-plugin.git?tag=api-v3#bd714e7cd5b9685f9abc9dc9f0a714cefb864f88"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -323,6 +325,7 @@ dependencies = [
 [[package]]
 name = "bunny-ui"
 version = "0.3.0"
+source = "git+https://github.com/Relial/bunny-plugin.git?tag=api-v3#bd714e7cd5b9685f9abc9dc9f0a714cefb864f88"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -2105,6 +2108,7 @@ dependencies = [
 [[package]]
 name = "shared"
 version = "0.1.0"
+source = "git+https://github.com/Relial/bunny-plugin.git?tag=api-v3#bd714e7cd5b9685f9abc9dc9f0a714cefb864f88"
 dependencies = [
  "abi_stable",
  "anyhow",
